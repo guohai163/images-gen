@@ -215,9 +215,16 @@ input:disabled {
   gap: 12px;
 }
 
+.mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .preset-button,
 .ghost-button,
 .inline-button,
+.mode-button,
 .submit-button,
 .history-item,
 .primary-link {
@@ -252,6 +259,20 @@ input:disabled {
 
 .inline-button {
   white-space: nowrap;
+}
+
+.mode-button {
+  background: rgba(255, 255, 255, 0.6);
+  color: #4f2f1a;
+  padding: 12px 14px;
+  border: 1px solid rgba(95, 69, 48, 0.14);
+}
+
+.mode-button.is-active {
+  background: linear-gradient(135deg, rgba(147, 81, 42, 0.16) 0%, rgba(107, 52, 22, 0.24) 100%);
+  border-color: rgba(138, 75, 33, 0.4);
+  color: var(--accent-dark);
+  box-shadow: 0 10px 20px rgba(107, 52, 22, 0.08);
 }
 
 .submit-button,
@@ -290,6 +311,62 @@ input:disabled {
 .feedback-error {
   background: var(--danger-bg);
   color: var(--danger-text);
+}
+
+.upload-dropzone {
+  position: relative;
+  display: grid;
+  min-height: 184px;
+  border: 1px dashed rgba(126, 78, 40, 0.32);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.52);
+  overflow: hidden;
+}
+
+.upload-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-empty,
+.upload-preview {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 20px;
+  min-height: 184px;
+}
+
+.upload-empty small,
+.upload-preview small,
+.upload-error {
+  color: var(--text-muted);
+}
+
+.upload-preview {
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 18px;
+  text-align: left;
+  align-items: center;
+}
+
+.upload-preview img {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid rgba(95, 69, 48, 0.16);
+}
+
+.upload-preview-meta {
+  min-width: 0;
+}
+
+.upload-preview-meta strong,
+.upload-preview-meta small {
+  display: block;
 }
 
 .usage-content,
@@ -485,6 +562,7 @@ input:disabled {
   .panel-header,
   .field-row,
   .preset-grid,
+  .mode-toggle,
   .input-with-actions,
   .result-meta,
   .usage-summary-grid,

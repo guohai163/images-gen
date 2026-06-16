@@ -13,6 +13,7 @@ export const DEFAULT_FORM_STATE: ImageFormState = {
   width: '1536',
   height: '1024',
   quality: 'medium',
+  generationMode: 'text',
 };
 
 export const SIZE_PRESETS: SizePreset[] = [
@@ -23,3 +24,10 @@ export const SIZE_PRESETS: SizePreset[] = [
 ];
 
 export const HISTORY_LIMIT = 10;
+export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+export const ACCEPTED_IMAGE_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+] as const;

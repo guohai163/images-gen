@@ -3,9 +3,11 @@ import type {
   GenerateRequestPayload,
   GeneratedImage,
   ImageFormState,
+  UploadState,
   UsageRequestPayload,
   UsageResponse,
 } from './types';
+import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from './constants';
 
 export function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim();
@@ -35,6 +37,22 @@ export function validateForm(formState: ImageFormState): string | null {
 
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
     return '宽度和高度必须是大于 0 的整数。';
+  }
+
+  return null;
+}
+
+export function validateUploadFile(file: File | null): string | null {
+  if (!file) {
+    return null;
+  }
+
+  if (!ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number])) {
+    return '仅支持 PNG、JPEG、WEBP 或 GIF 图片文件。';
+  }
+
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    return '上传图片不能超过 10MB。';
   }
 
   return null;
@@ -121,6 +139,32 @@ export async function requestGenerate(
   return (await response.json()) as { data?: Array<{ b64_json?: string }> };
 }
 
+export async function requestGenerateWithImage(
+  payload: GenerateRequestPayload,
+  file: File,
+): Promise<{ data?: Array<{ b64_json?: string }> }> {
+  const formData = new FormData();
+  formData.append('baseUrl', payload.baseUrl);
+  formData.append('apiKey', payload.apiKey);
+  formData.append('model', payload.model);
+  formData.append('prompt', payload.prompt);
+  formData.append('size', payload.size);
+  formData.append('quality', payload.quality);
+  formData.append('mode', payload.mode ?? 'reference');
+  formData.append('image', file);
+
+  const response = await fetch('/api/generate', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return (await response.json()) as { data?: Array<{ b64_json?: string }> };
+}
+
 export async function fetchUsage(payload: UsageRequestPayload): Promise<UsageResponse> {
   const response = await fetch('/api/usage', {
     method: 'POST',
@@ -155,4 +199,12 @@ export function formatMetric(value: number | undefined, digits = 2): string {
     maximumFractionDigits: digits,
     minimumFractionDigits: 0,
   });
+}
+
+export function createUploadPreviewState(file: File): UploadState {
+  return {
+    file,
+    previewUrl: URL.createObjectURL(file),
+    error: null,
+  };
 }

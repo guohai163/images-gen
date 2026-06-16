@@ -5,7 +5,7 @@ const hasWindow = typeof window !== 'undefined';
 
 type StoredSettings = Pick<
   ImageFormState,
-  'baseUrl' | 'apiKey' | 'prompt' | 'width' | 'height'
+  'baseUrl' | 'apiKey' | 'prompt' | 'width' | 'height' | 'generationMode'
 >;
 
 export function loadStoredSettings(): ImageFormState {
@@ -27,6 +27,10 @@ export function loadStoredSettings(): ImageFormState {
       prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
       width: typeof parsed.width === 'string' ? parsed.width : DEFAULT_FORM_STATE.width,
       height: typeof parsed.height === 'string' ? parsed.height : DEFAULT_FORM_STATE.height,
+      generationMode:
+        parsed.generationMode === 'reference' || parsed.generationMode === 'edit'
+          ? parsed.generationMode
+          : DEFAULT_FORM_STATE.generationMode,
     };
   } catch {
     return DEFAULT_FORM_STATE;
@@ -44,6 +48,7 @@ export function saveStoredSettings(formState: ImageFormState): void {
     prompt: formState.prompt,
     width: formState.width,
     height: formState.height,
+    generationMode: formState.generationMode,
   };
 
   window.localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(payload));

@@ -1,9 +1,10 @@
 import type { FormEvent } from 'react';
-import { SIZE_PRESETS } from '../constants';
-import type { ApiErrorState, ImageFormState } from '../types';
+import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES, SIZE_PRESETS } from '../constants';
+import type { ApiErrorState, ImageFormState, UploadState } from '../types';
 
 type ConfigFormProps = {
   formState: ImageFormState;
+  uploadState: UploadState;
   isSubmitting: boolean;
   showApiKey: boolean;
   error: ApiErrorState | null;
@@ -13,10 +14,13 @@ type ConfigFormProps = {
   onToggleApiKey: () => void;
   onClearApiKey: () => void;
   onClearConfig: () => void;
+  onImageSelect: (file: File | null) => void;
+  onRemoveImage: () => void;
 };
 
 export function ConfigForm({
   formState,
+  uploadState,
   isSubmitting,
   showApiKey,
   error,
@@ -26,6 +30,8 @@ export function ConfigForm({
   onToggleApiKey,
   onClearApiKey,
   onClearConfig,
+  onImageSelect,
+  onRemoveImage,
 }: ConfigFormProps) {
   return (
     <section className="panel panel-form">
@@ -80,6 +86,40 @@ export function ConfigForm({
           </label>
         </div>
 
+        <div className="field">
+          <span>生成方式</span>
+          <div className="mode-toggle">
+            <button
+              className={formState.generationMode === 'text' ? 'mode-button is-active' : 'mode-button'}
+              type="button"
+              onClick={() => onFieldChange('generationMode', 'text')}
+            >
+              纯文本生成
+            </button>
+            <button
+              className={formState.generationMode === 'reference' ? 'mode-button is-active' : 'mode-button'}
+              type="button"
+              onClick={() => onFieldChange('generationMode', 'reference')}
+            >
+              参考图生成
+            </button>
+            <button
+              className={formState.generationMode === 'edit' ? 'mode-button is-active' : 'mode-button'}
+              type="button"
+              onClick={() => onFieldChange('generationMode', 'edit')}
+            >
+              编辑原图
+            </button>
+          </div>
+          <small>
+            {formState.generationMode === 'reference'
+              ? '上传一张图片作为风格或主体参考，再结合提示词生成新图。'
+              : formState.generationMode === 'edit'
+                ? '上传一张原图，并用提示词描述你希望如何修改它。'
+                : '不上传图片时，将继续按当前提示词直接生成新图。'}
+          </small>
+        </div>
+
         <label className="field">
           <span>提示词</span>
           <textarea
@@ -89,6 +129,42 @@ export function ConfigForm({
             onChange={(event) => onFieldChange('prompt', event.target.value)}
           />
         </label>
+
+        <div className="field">
+          <span>输入图片</span>
+          <label className="upload-dropzone">
+            <input
+              className="upload-input"
+              type="file"
+              accept={ACCEPTED_IMAGE_TYPES.join(',')}
+              onChange={(event) => onImageSelect(event.target.files?.[0] ?? null)}
+            />
+            {uploadState.previewUrl ? (
+              <div className="upload-preview">
+                <img src={uploadState.previewUrl} alt="上传预览" />
+                <div className="upload-preview-meta">
+                  <strong>{uploadState.file?.name ?? '已选择图片'}</strong>
+                  <small>
+                    {uploadState.file
+                      ? `${Math.max(1, Math.round(uploadState.file.size / 1024))} KB`
+                      : '当前上传图片'}
+                  </small>
+                </div>
+              </div>
+            ) : (
+              <div className="upload-empty">
+                <strong>点击或拖入一张图片</strong>
+                <small>支持 PNG、JPEG、WEBP、GIF，单张不超过 {MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。</small>
+              </div>
+            )}
+          </label>
+          {uploadState.file ? (
+            <button className="ghost-button" type="button" onClick={onRemoveImage}>
+              移除图片
+            </button>
+          ) : null}
+          {uploadState.error ? <small className="upload-error">{uploadState.error}</small> : null}
+        </div>
 
         <div className="field">
           <span>尺寸预设</span>

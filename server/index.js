@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,16 +10,27 @@ const __dirname = path.dirname(__filename);
 const distDir = path.resolve(__dirname, '../dist');
 const indexFile = path.join(distDir, 'index.html');
 const IMAGE_PATH = '/v1/images/generations';
+const EDIT_PATH = '/v1/images/edits';
 const USAGE_PATH = '/v1/usage';
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_UPLOAD_SIZE_BYTES,
+  },
+});
 
 app.use(express.json({ limit: '2mb' }));
 
-app.post('/api/generate', async (req, res) => {
+app.post('/api/generate', upload.single('image'), async (req, res) => {
   const { baseUrl, apiKey, model, prompt, size, quality } = req.body ?? {};
+  const mode = req.body?.mode ?? 'text';
+  const uploadedImage = req.file;
 
   const validationError =
     validateBaseFields(baseUrl, apiKey) ||
-    validateGenerateFields(model, prompt, size, quality);
+    validateGenerateFields(model, prompt, size, quality, mode, uploadedImage);
 
   if (validationError) {
     res.status(400).json({
@@ -29,7 +41,8 @@ app.post('/api/generate', async (req, res) => {
     return;
   }
 
-  const upstreamUrl = buildUpstreamUrl(baseUrl, IMAGE_PATH);
+  const upstreamPath = uploadedImage ? EDIT_PATH : IMAGE_PATH;
+  const upstreamUrl = buildUpstreamUrl(baseUrl, upstreamPath);
   if (!upstreamUrl) {
     res.status(400).json({
       error: {
@@ -40,19 +53,30 @@ app.post('/api/generate', async (req, res) => {
   }
 
   try {
-    const upstreamResponse = await fetch(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        prompt: prompt.trim(),
-        size,
-        quality,
-      }),
-    });
+    const upstreamResponse = uploadedImage
+      ? await fetchWithImageEdit({
+          upstreamUrl,
+          apiKey,
+          model,
+          prompt,
+          size,
+          quality,
+          mode,
+          uploadedImage,
+        })
+      : await fetch(upstreamUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey.trim()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            prompt: prompt.trim(),
+            size,
+            quality,
+          }),
+        });
 
     await proxyResponse(upstreamResponse, res);
   } catch (error) {
@@ -160,7 +184,7 @@ function validateBaseFields(baseUrl, apiKey) {
   return null;
 }
 
-function validateGenerateFields(model, prompt, size, quality) {
+function validateGenerateFields(model, prompt, size, quality, mode, uploadedImage) {
   if (model !== 'gpt-image-2') {
     return '当前仅支持 gpt-image-2 模型。';
   }
@@ -177,7 +201,44 @@ function validateGenerateFields(model, prompt, size, quality) {
     return '图片尺寸格式无效，应为类似 1536x1024 的宽x高。';
   }
 
+  const acceptedModes = new Set(['text', 'reference', 'edit']);
+  if (!acceptedModes.has(mode)) {
+    return '生成模式无效。';
+  }
+
+  if (uploadedImage) {
+    if (!ACCEPTED_IMAGE_TYPES.has(uploadedImage.mimetype)) {
+      return '仅支持 PNG、JPEG、WEBP 或 GIF 图片文件。';
+    }
+  }
+
   return null;
+}
+
+async function fetchWithImageEdit({
+  upstreamUrl,
+  apiKey,
+  model,
+  prompt,
+  size,
+  quality,
+  mode,
+  uploadedImage,
+}) {
+  const formData = new FormData();
+  formData.append('model', model);
+  formData.append('prompt', prompt.trim());
+  formData.append('size', size);
+  formData.append('quality', quality);
+  formData.append('image[]', new Blob([uploadedImage.buffer], { type: uploadedImage.mimetype }), uploadedImage.originalname);
+
+  return fetch(upstreamUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey.trim()}`,
+    },
+    body: formData,
+  });
 }
 
 async function proxyResponse(upstreamResponse, res) {
@@ -195,3 +256,26 @@ async function proxyResponse(upstreamResponse, res) {
 
   res.send(await upstreamResponse.text());
 }
+
+app.use((error, _req, res, next) => {
+  if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+    res.status(400).json({
+      error: {
+        message: '上传图片不能超过 10MB。',
+      },
+    });
+    return;
+  }
+
+  if (error) {
+    res.status(400).json({
+      error: {
+        message: '上传图片解析失败，请重新选择文件后再试。',
+        details: error instanceof Error ? error.message : undefined,
+      },
+    });
+    return;
+  }
+
+  next();
+});

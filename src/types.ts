@@ -6,6 +6,7 @@ export type ImageFormState = {
   width: string;
   height: string;
   quality: 'medium';
+  generationMode: 'text' | 'reference' | 'edit';
 };
 
 export type GenerationHistoryItem = {
@@ -84,9 +85,16 @@ export type GenerateRequestPayload = {
   prompt: string;
   size: string;
   quality: 'medium';
+  mode?: 'text' | 'reference' | 'edit';
 };
 
 export type UsageRequestPayload = {
   baseUrl: string;
   apiKey: string;
+};
+
+export type UploadState = {
+  file: File | null;
+  previewUrl: string | null;
+  error: string | null;
 };

@@ -5,8 +5,26 @@ import { ResultPanel } from './components/ResultPanel';
 import { UsagePanel } from './components/UsagePanel';
 import { DEFAULT_FORM_STATE, HISTORY_LIMIT } from './constants';
 import { clearHistory, clearStoredSettings, loadHistory, loadStoredSettings, saveHistory, saveStoredSettings } from './storage';
-import type { ApiErrorState, GeneratedImage, GenerationHistoryItem, ImageFormState, UsageState } from './types';
-import { createHistoryItem, createImageDataUrl, fetchUsage, isApiErrorState, normalizeBaseUrl, requestGenerate, validateForm } from './utils';
+import type {
+  ApiErrorState,
+  GeneratedImage,
+  GenerationHistoryItem,
+  ImageFormState,
+  UploadState,
+  UsageState,
+} from './types';
+import {
+  createHistoryItem,
+  createImageDataUrl,
+  createUploadPreviewState,
+  fetchUsage,
+  isApiErrorState,
+  normalizeBaseUrl,
+  requestGenerate,
+  requestGenerateWithImage,
+  validateForm,
+  validateUploadFile,
+} from './utils';
 
 function App() {
   const [formState, setFormState] = useState<ImageFormState>(() => loadStoredSettings());
@@ -15,6 +33,11 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [error, setError] = useState<ApiErrorState | null>(null);
+  const [uploadState, setUploadState] = useState<UploadState>({
+    file: null,
+    previewUrl: null,
+    error: null,
+  });
   const [usageState, setUsageState] = useState<UsageState>({
     data: null,
     isLoading: false,
@@ -25,6 +48,14 @@ function App() {
   useEffect(() => {
     saveStoredSettings(formState);
   }, [formState]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadState.previewUrl) {
+        URL.revokeObjectURL(uploadState.previewUrl);
+      }
+    };
+  }, [uploadState.previewUrl]);
 
   useEffect(() => {
     if (!normalizeBaseUrl(formState.baseUrl) || !formState.apiKey.trim()) {
@@ -53,6 +84,7 @@ function App() {
     clearStoredSettings();
     setShowApiKey(false);
     setFormState(DEFAULT_FORM_STATE);
+    clearUploadState();
     setUsageState({
       data: null,
       isLoading: false,
@@ -71,12 +103,47 @@ function App() {
     startTransition(() => {
       setCurrentImage(item);
       setError(null);
+      clearUploadState();
       setFormState((current) => ({
         ...current,
         prompt: item.prompt,
         width: String(item.width),
         height: String(item.height),
       }));
+    });
+  }
+
+  function clearUploadState() {
+    setUploadState((current) => {
+      if (current.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+
+      return {
+        file: null,
+        previewUrl: null,
+        error: null,
+      };
+    });
+  }
+
+  function handleImageSelect(file: File | null) {
+    const uploadError = validateUploadFile(file);
+
+    setUploadState((current) => {
+      if (current.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+
+      if (!file || uploadError) {
+        return {
+          file: null,
+          previewUrl: null,
+          error: uploadError,
+        };
+      }
+
+      return createUploadPreviewState(file);
     });
   }
 
@@ -134,17 +201,27 @@ function App() {
       return;
     }
 
+    if (uploadState.error) {
+      setError({ message: uploadState.error });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const payload = await requestGenerate({
+      const payloadData = {
         baseUrl: normalizeBaseUrl(formState.baseUrl),
         apiKey: formState.apiKey.trim(),
         model: formState.model,
         prompt: formState.prompt.trim(),
         size: `${Number(formState.width)}x${Number(formState.height)}`,
         quality: formState.quality,
-      });
+        mode: formState.generationMode,
+      } as const;
+      const payload =
+        uploadState.file && formState.generationMode !== 'text'
+          ? await requestGenerateWithImage(payloadData, uploadState.file)
+          : await requestGenerate(payloadData);
       const base64 = payload.data?.[0]?.b64_json;
 
       if (!base64) {
@@ -194,6 +271,7 @@ function App() {
       <main className="content-grid">
         <ConfigForm
           formState={formState}
+          uploadState={uploadState}
           isSubmitting={isSubmitting}
           showApiKey={showApiKey}
           error={error}
@@ -203,6 +281,8 @@ function App() {
           onToggleApiKey={() => setShowApiKey((current) => !current)}
           onClearApiKey={() => updateField('apiKey', '')}
           onClearConfig={handleClearConfig}
+          onImageSelect={handleImageSelect}
+          onRemoveImage={clearUploadState}
         />
 
         <div className="side-column">
