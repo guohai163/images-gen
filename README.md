@@ -68,6 +68,38 @@ docker run --rm -p 3000:3000 image-gen-console
 docker run --rm -e PORT=8080 -p 8080:8080 image-gen-console
 ```
 
+## Docker Compose
+
+仓库中已提供示例文件 [docker-compose.yml](/Users/guohai/Develop/github-project/image-gen/docker-compose.yml)，默认直接使用 GitHub Actions 推送到 GHCR 的镜像：
+
+```yaml
+ghcr.io/guohai163/images-gen:latest
+```
+
+启动方式：
+
+```bash
+docker compose up -d
+```
+
+如果你想改宿主机端口，可以在同目录下先设置环境变量：
+
+```bash
+IMAGE_GEN_PORT=8080 docker compose up -d
+```
+
+停止并删除容器：
+
+```bash
+docker compose down
+```
+
+说明：
+
+- 容器内固定监听 `3000`
+- 宿主机默认暴露 `3000`，可通过 `IMAGE_GEN_PORT` 覆盖
+- 页面里的上游 `baseUrl` 和 `apiKey` 仍然由最终用户在浏览器中配置并保存在浏览器本地
+
 ## 安全说明
 
 - 这个项目当前的设计仍允许用户在页面中输入并保存 API Key

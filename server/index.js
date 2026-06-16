@@ -167,7 +167,7 @@ function validateGenerateFields(model, prompt, size, quality) {
     return '当前仅支持 medium 质量。';
   }
 
-  if (typeof size !== 'string' || !/^[1-9]\\d*x[1-9]\\d*$/.test(size)) {
+  if (typeof size !== 'string' || !/^[1-9]\d*x[1-9]\d*$/.test(size)) {
     return '图片尺寸格式无效，应为类似 1536x1024 的宽x高。';
   }
 

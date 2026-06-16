@@ -1,0 +1,10 @@
+services:
+  image-gen:
+    image: ghcr.io/guohai163/images-gen:latest
+    container_name: image-gen
+    restart: unless-stopped
+    ports:
+      - "${IMAGE_GEN_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+
