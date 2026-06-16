@@ -8,12 +8,18 @@ import type {
 } from './types';
 
 export function normalizeBaseUrl(input: string): string {
-  return input.trim().replace(/\/+$/, '');
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return withProtocol.replace(/\/+$/, '');
 }
 
 export function validateForm(formState: ImageFormState): string | null {
   if (!normalizeBaseUrl(formState.baseUrl)) {
-    return '请先填写接口域名，例如 https://aiproxy.gydev.cn';
+    return '请输入带中转站的接口域名。';
   }
 
   if (!formState.apiKey.trim()) {

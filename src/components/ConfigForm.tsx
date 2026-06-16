@@ -43,12 +43,12 @@ export function ConfigForm({
         <label className="field">
           <span>接口域名</span>
           <input
-            type="url"
-            placeholder="https://aiproxy.gydev.cn"
+            type="text"
+            placeholder="请输入带中转站的接口域名"
             value={formState.baseUrl}
             onChange={(event) => onFieldChange('baseUrl', event.target.value)}
           />
-          <small>页面会自动拼接 `/v1/images/generations`。</small>
+          <small>请输入带中转站的域名；如果没有填写协议，系统会自动补全 `https://`。</small>
         </label>
 
         <label className="field">

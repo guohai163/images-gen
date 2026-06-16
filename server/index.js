@@ -121,7 +121,13 @@ function normalizeBaseUrl(value) {
     return '';
   }
 
-  return value.trim().replace(/\/+$/, '');
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return withProtocol.replace(/\/+$/, '');
 }
 
 function buildUpstreamUrl(baseUrl, pathName) {
@@ -144,7 +150,7 @@ function buildUpstreamUrl(baseUrl, pathName) {
 
 function validateBaseFields(baseUrl, apiKey) {
   if (!normalizeBaseUrl(baseUrl)) {
-    return '请先填写接口域名，例如 https://aiproxy.gydev.cn';
+    return '请输入带中转站的接口域名。';
   }
 
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
