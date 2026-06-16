@@ -3,9 +3,8 @@ export type ImageFormState = {
   apiKey: string;
   model: 'gpt-image-2';
   prompt: string;
-  width: string;
-  height: string;
-  quality: 'medium';
+  size: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
+  quality: 'low' | 'medium' | 'high' | 'auto';
   generationMode: 'text' | 'reference' | 'edit';
 };
 
@@ -29,8 +28,7 @@ export type GeneratedImage = GenerationHistoryItem;
 
 export type SizePreset = {
   label: string;
-  width: number;
-  height: number;
+  value: ImageFormState['size'];
 };
 
 export type UsageResponse = {
@@ -84,7 +82,7 @@ export type GenerateRequestPayload = {
   model: 'gpt-image-2';
   prompt: string;
   size: string;
-  quality: 'medium';
+  quality: ImageFormState['quality'];
   mode?: 'text' | 'reference' | 'edit';
 };
 

@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES, SIZE_PRESETS } from '../constants';
+import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES, QUALITY_OPTIONS, SIZE_PRESETS } from '../constants';
 import type { ApiErrorState, ImageFormState, UploadState } from '../types';
 
 type ConfigFormProps = {
@@ -10,7 +10,6 @@ type ConfigFormProps = {
   error: ApiErrorState | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: <K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) => void;
-  onPresetClick: (width: number, height: number) => void;
   onToggleApiKey: () => void;
   onClearApiKey: () => void;
   onClearConfig: () => void;
@@ -26,7 +25,6 @@ export function ConfigForm({
   error,
   onSubmit,
   onFieldChange,
-  onPresetClick,
   onToggleApiKey,
   onClearApiKey,
   onClearConfig,
@@ -81,8 +79,14 @@ export function ConfigForm({
             <input type="text" value={formState.model} disabled />
           </label>
           <label className="field">
-            <span>质量</span>
-            <input type="text" value={formState.quality} disabled />
+            <span>品质</span>
+            <select value={formState.quality} onChange={(event) => onFieldChange('quality', event.target.value as ImageFormState['quality'])}>
+              {QUALITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 
@@ -167,45 +171,15 @@ export function ConfigForm({
         </div>
 
         <div className="field">
-          <span>尺寸预设</span>
-          <div className="preset-grid">
+          <span>图片尺寸</span>
+          <select value={formState.size} onChange={(event) => onFieldChange('size', event.target.value as ImageFormState['size'])}>
             {SIZE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                className="preset-button"
-                type="button"
-                onClick={() => onPresetClick(preset.width, preset.height)}
-              >
-                <strong>{preset.label}</strong>
-                <small>
-                  {preset.width} x {preset.height}
-                </small>
-              </button>
+              <option key={preset.value} value={preset.value}>
+                {preset.label}
+              </option>
             ))}
-          </div>
-        </div>
-
-        <div className="field-row">
-          <label className="field">
-            <span>宽度</span>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={formState.width}
-              onChange={(event) => onFieldChange('width', event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>高度</span>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={formState.height}
-              onChange={(event) => onFieldChange('height', event.target.value)}
-            />
-          </label>
+          </select>
+          <small>仅保留官方支持的尺寸选项，带图生成时最终画幅仍可能受输入图影响。</small>
         </div>
 
         {error ? (

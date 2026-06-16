@@ -32,11 +32,14 @@ export function validateForm(formState: ImageFormState): string | null {
     return '请填写提示词后再生成图片。';
   }
 
-  const width = Number(formState.width);
-  const height = Number(formState.height);
+  const validSizes = new Set(['1024x1024', '1024x1536', '1536x1024', 'auto']);
+  if (!validSizes.has(formState.size)) {
+    return '请选择受支持的图片尺寸。';
+  }
 
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
-    return '宽度和高度必须是大于 0 的整数。';
+  const validQualities = new Set(['low', 'medium', 'high', 'auto']);
+  if (!validQualities.has(formState.quality)) {
+    return '请选择受支持的图片品质。';
   }
 
   return null;
@@ -81,12 +84,17 @@ export function createHistoryItem(
   imageDataUrl: string,
   createdAt = new Date(),
 ): GeneratedImage {
+  const [width, height] =
+    formState.size === 'auto'
+      ? [0, 0]
+      : formState.size.split('x').map((value) => Number(value));
+
   return {
     id: `${createdAt.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: createdAt.toISOString(),
     prompt: formState.prompt.trim(),
-    width: Number(formState.width),
-    height: Number(formState.height),
+    width,
+    height,
     imageDataUrl,
     filename: createDownloadFilename(createdAt),
   };

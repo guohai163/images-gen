@@ -17,17 +17,26 @@ export const DEFAULT_FORM_STATE: ImageFormState = {
   apiKey: '',
   model: 'gpt-image-2',
   prompt: '',
-  width: '1536',
-  height: '1024',
+  size: '1536x1024',
   quality: 'medium',
   generationMode: 'text',
 };
 
 export const SIZE_PRESETS: SizePreset[] = [
-  { label: '16:9', width: 1536, height: 864 },
-  { label: '4:3', width: 1536, height: 1152 },
-  { label: '1:1', width: 1024, height: 1024 },
-  { label: '3:2', width: 1536, height: 1024 },
+  { label: '横版 1536x1024', value: '1536x1024' },
+  { label: '方图 1024x1024', value: '1024x1024' },
+  { label: '竖版 1024x1536', value: '1024x1536' },
+  { label: '自动', value: 'auto' },
+];
+
+export const QUALITY_OPTIONS: Array<{
+  label: string;
+  value: ImageFormState['quality'];
+}> = [
+  { label: '自动', value: 'auto' },
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' },
 ];
 
 export const HISTORY_LIMIT = 10;

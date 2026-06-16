@@ -38,6 +38,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -175,6 +176,7 @@ a {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid rgba(95, 69, 48, 0.18);
@@ -191,6 +193,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   outline: none;
   border-color: rgba(138, 75, 33, 0.6);

@@ -86,14 +86,6 @@ function App() {
     }));
   }
 
-  function applyPreset(width: number, height: number) {
-    setFormState((current) => ({
-      ...current,
-      width: String(width),
-      height: String(height),
-    }));
-  }
-
   function handleClearConfig() {
     clearStoredSettings();
     setShowApiKey(false);
@@ -121,8 +113,10 @@ function App() {
       setFormState((current) => ({
         ...current,
         prompt: item.prompt,
-        width: String(item.width),
-        height: String(item.height),
+        size:
+          item.width > 0 && item.height > 0
+            ? (`${item.width}x${item.height}` as ImageFormState['size'])
+            : current.size,
       }));
     });
   }
@@ -228,7 +222,7 @@ function App() {
         apiKey: formState.apiKey.trim(),
         model: formState.model,
         prompt: formState.prompt.trim(),
-        size: `${Number(formState.width)}x${Number(formState.height)}`,
+        size: formState.size,
         quality: formState.quality,
         mode: formState.generationMode,
       } as const;
@@ -291,7 +285,6 @@ function App() {
           error={error}
           onSubmit={handleSubmit}
           onFieldChange={updateField}
-          onPresetClick={applyPreset}
           onToggleApiKey={() => setShowApiKey((current) => !current)}
           onClearApiKey={() => updateField('apiKey', '')}
           onClearConfig={handleClearConfig}

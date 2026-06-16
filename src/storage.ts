@@ -5,7 +5,7 @@ const hasWindow = typeof window !== 'undefined';
 
 type StoredSettings = Pick<
   ImageFormState,
-  'baseUrl' | 'apiKey' | 'prompt' | 'width' | 'height' | 'generationMode'
+  'baseUrl' | 'apiKey' | 'prompt' | 'size' | 'quality' | 'generationMode'
 >;
 
 export function loadStoredSettings(): ImageFormState {
@@ -25,8 +25,20 @@ export function loadStoredSettings(): ImageFormState {
       baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
       apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
       prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
-      width: typeof parsed.width === 'string' ? parsed.width : DEFAULT_FORM_STATE.width,
-      height: typeof parsed.height === 'string' ? parsed.height : DEFAULT_FORM_STATE.height,
+      size:
+        parsed.size === '1024x1024' ||
+        parsed.size === '1024x1536' ||
+        parsed.size === '1536x1024' ||
+        parsed.size === 'auto'
+          ? parsed.size
+          : DEFAULT_FORM_STATE.size,
+      quality:
+        parsed.quality === 'low' ||
+        parsed.quality === 'medium' ||
+        parsed.quality === 'high' ||
+        parsed.quality === 'auto'
+          ? parsed.quality
+          : DEFAULT_FORM_STATE.quality,
       generationMode:
         parsed.generationMode === 'reference' || parsed.generationMode === 'edit'
           ? parsed.generationMode
@@ -46,8 +58,8 @@ export function saveStoredSettings(formState: ImageFormState): void {
     baseUrl: formState.baseUrl,
     apiKey: formState.apiKey,
     prompt: formState.prompt,
-    width: formState.width,
-    height: formState.height,
+    size: formState.size,
+    quality: formState.quality,
     generationMode: formState.generationMode,
   };
 
