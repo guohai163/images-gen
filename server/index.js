@@ -193,12 +193,14 @@ function validateGenerateFields(model, prompt, size, quality, mode, uploadedImag
     return '请填写提示词后再生成图片。';
   }
 
-  if (quality !== 'medium') {
-    return '当前仅支持 medium 质量。';
+  const acceptedQualities = new Set(['low', 'medium', 'high', 'auto']);
+  if (!acceptedQualities.has(quality)) {
+    return '图片品质无效，请选择 low、medium、high 或 auto。';
   }
 
-  if (typeof size !== 'string' || !/^[1-9]\d*x[1-9]\d*$/.test(size)) {
-    return '图片尺寸格式无效，应为类似 1536x1024 的宽x高。';
+  const acceptedSizes = new Set(['1024x1024', '1024x1536', '1536x1024', 'auto']);
+  if (typeof size !== 'string' || !acceptedSizes.has(size)) {
+    return '图片尺寸无效，请选择 1024x1024、1024x1536、1536x1024 或 auto。';
   }
 
   const acceptedModes = new Set(['text', 'reference', 'edit']);
