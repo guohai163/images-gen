@@ -1,4 +1,4 @@
-import { DEFAULT_FORM_STATE, HISTORY_LIMIT, STORAGE_KEYS } from './constants';
+import { DEFAULT_FORM_STATE, HISTORY_LIMIT, INDEXED_DB, STORAGE_KEYS } from './constants';
 import type { GenerationHistoryItem, ImageFormState } from './types';
 
 const hasWindow = typeof window !== 'undefined';
@@ -62,59 +62,85 @@ export function clearStoredSettings(): void {
   window.localStorage.removeItem(STORAGE_KEYS.settings);
 }
 
-export function loadHistory(): GenerationHistoryItem[] {
+export async function loadHistory(): Promise<GenerationHistoryItem[]> {
   if (!hasWindow) {
     return [];
+  }
+
+  const db = await openHistoryDb();
+  if (!db) {
+    return loadLegacyHistory();
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEYS.history);
-    if (!raw) {
-      return [];
+    const history = await readHistoryFromDb(db);
+    if (history.length > 0) {
+      return history;
     }
 
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
+    const legacyHistory = loadLegacyHistory();
+    if (legacyHistory.length > 0) {
+      await writeHistoryToDb(db, legacyHistory);
+      window.localStorage.removeItem(STORAGE_KEYS.history);
+      return legacyHistory;
     }
 
-    return parsed.filter(isHistoryItem);
-  } catch {
     return [];
+  } catch {
+    return loadLegacyHistory();
+  } finally {
+    db.close();
   }
 }
 
-export function saveHistory(history: GenerationHistoryItem[]): GenerationHistoryItem[] {
+export async function saveHistory(history: GenerationHistoryItem[]): Promise<GenerationHistoryItem[]> {
+  const nextHistory = history.slice(0, HISTORY_LIMIT);
+
   if (!hasWindow) {
-    return history.slice(0, HISTORY_LIMIT);
+    return nextHistory;
   }
 
-  let nextHistory = history.slice(0, HISTORY_LIMIT);
+  const db = await openHistoryDb();
+  if (!db) {
+    saveLegacyHistory(nextHistory);
+    return nextHistory;
+  }
 
-  while (nextHistory.length > 0) {
+  try {
+    await writeHistoryToDb(db, nextHistory);
     try {
-      window.localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(nextHistory));
-      return nextHistory;
+      window.localStorage.removeItem(STORAGE_KEYS.history);
     } catch {
-      nextHistory = nextHistory.slice(0, nextHistory.length - 1);
+      // Ignore legacy cleanup failures.
     }
-  }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEYS.history, '[]');
+    return nextHistory;
   } catch {
-    return [];
+    saveLegacyHistory(nextHistory);
+    return nextHistory;
+  } finally {
+    db.close();
   }
-
-  return [];
 }
 
-export function clearHistory(): void {
+export async function clearHistory(): Promise<void> {
   if (!hasWindow) {
     return;
   }
 
-  window.localStorage.removeItem(STORAGE_KEYS.history);
+  const db = await openHistoryDb();
+  if (db) {
+    try {
+      await deleteHistoryFromDb(db);
+    } finally {
+      db.close();
+    }
+  }
+
+  try {
+    window.localStorage.removeItem(STORAGE_KEYS.history);
+  } catch {
+    // Ignore legacy cleanup failures.
+  }
 }
 
 function isHistoryItem(value: unknown): value is GenerationHistoryItem {
@@ -133,4 +159,99 @@ function isHistoryItem(value: unknown): value is GenerationHistoryItem {
     typeof candidate.imageDataUrl === 'string' &&
     typeof candidate.filename === 'string'
   );
+}
+
+function loadLegacyHistory(): GenerationHistoryItem[] {
+  if (!hasWindow) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.history);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(isHistoryItem).slice(0, HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function saveLegacyHistory(history: GenerationHistoryItem[]): void {
+  if (!hasWindow) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(history.slice(0, HISTORY_LIMIT)));
+  } catch {
+    // Ignore fallback storage errors.
+  }
+}
+
+function openHistoryDb(): Promise<IDBDatabase | null> {
+  if (!hasWindow || !('indexedDB' in window)) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const request = window.indexedDB.open(INDEXED_DB.name, INDEXED_DB.version);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(INDEXED_DB.store)) {
+        db.createObjectStore(INDEXED_DB.store);
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+  });
+}
+
+function readHistoryFromDb(db: IDBDatabase): Promise<GenerationHistoryItem[]> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(INDEXED_DB.store, 'readonly');
+    const store = transaction.objectStore(INDEXED_DB.store);
+    const request = store.get(INDEXED_DB.historyKey);
+
+    request.onsuccess = () => {
+      const value = request.result;
+      if (!Array.isArray(value)) {
+        resolve([]);
+        return;
+      }
+
+      resolve(value.filter(isHistoryItem).slice(0, HISTORY_LIMIT));
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function writeHistoryToDb(db: IDBDatabase, history: GenerationHistoryItem[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(INDEXED_DB.store, 'readwrite');
+    const store = transaction.objectStore(INDEXED_DB.store);
+    const request = store.put(history.slice(0, HISTORY_LIMIT), INDEXED_DB.historyKey);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function deleteHistoryFromDb(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(INDEXED_DB.store, 'readwrite');
+    const store = transaction.objectStore(INDEXED_DB.store);
+    const request = store.delete(INDEXED_DB.historyKey);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
 }

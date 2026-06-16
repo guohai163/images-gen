@@ -5,6 +5,13 @@ export const STORAGE_KEYS = {
   history: 'image-gen:history',
 } as const;
 
+export const INDEXED_DB = {
+  name: 'image-gen-db',
+  version: 1,
+  store: 'kv',
+  historyKey: 'history',
+} as const;
+
 export const DEFAULT_FORM_STATE: ImageFormState = {
   baseUrl: '',
   apiKey: '',

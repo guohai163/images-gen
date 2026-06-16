@@ -28,7 +28,7 @@ import {
 
 function App() {
   const [formState, setFormState] = useState<ImageFormState>(() => loadStoredSettings());
-  const [history, setHistory] = useState<GenerationHistoryItem[]>(() => loadHistory());
+  const [history, setHistory] = useState<GenerationHistoryItem[]>([]);
   const [currentImage, setCurrentImage] = useState<GeneratedImage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -48,6 +48,20 @@ function App() {
   useEffect(() => {
     saveStoredSettings(formState);
   }, [formState]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadHistory().then((loadedHistory) => {
+      if (!cancelled) {
+        setHistory(loadedHistory);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -94,7 +108,7 @@ function App() {
   }
 
   function handleClearHistory() {
-    clearHistory();
+    void clearHistory();
     setHistory([]);
     setCurrentImage(null);
   }
@@ -234,7 +248,7 @@ function App() {
       const imageDataUrl = createImageDataUrl(base64);
       const nextImage = createHistoryItem(formState, imageDataUrl);
       const nextHistory = [nextImage, ...history].slice(0, HISTORY_LIMIT);
-      const persistedHistory = saveHistory(nextHistory);
+      const persistedHistory = await saveHistory(nextHistory);
 
       setCurrentImage(nextImage);
       setHistory(persistedHistory);
