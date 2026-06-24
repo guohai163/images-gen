@@ -1,4 +1,6 @@
-# Image Gen Console
+![魔法画布 Logo](./public/branding/magic-canvas-logo.png)
+
+# 魔法画布 (The Magic Canvas)
 
 一个用于调用远程图片生成接口的 Web 工作台。前端负责配置和展示，Node 服务端负责同源代理请求，避免浏览器跨域问题。
 

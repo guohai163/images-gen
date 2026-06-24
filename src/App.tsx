@@ -266,12 +266,12 @@ function App() {
   return (
     <div className="app-shell">
       <header className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">Image Gen Console</p>
-          <h1>把远程图片生成接口，装进一个顺手的网页工作台</h1>
-          <p className="hero-text">
-            自定义接口域名与 API Key，输入多行提示词，挑选常用画幅或手工填写尺寸，生成结果会即时预览并保存在当前浏览器中。
-          </p>
+        <div className="brand-lockup" aria-label="魔法画布 The Magic Canvas">
+          <img
+            className="brand-logo"
+            src="/branding/magic-canvas-logo.png"
+            alt="魔法画布 The Magic Canvas"
+          />
         </div>
         <aside className="warning-card">
           <strong>安全提示</strong>
@@ -316,6 +316,12 @@ function App() {
         open={previewImage !== null}
         onClose={() => setPreviewImage(null)}
       />
+      <footer className="site-footer">
+        <p>© 2026 魔法画布 (The Magic Canvas)</p>
+        <a href="https://github.com/guohai163/images-gen" target="_blank" rel="noreferrer">
+          github.com/guohai163/images-gen
+        </a>
+      </footer>
     </div>
   );
 }
