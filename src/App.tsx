@@ -1,5 +1,6 @@
 import { type FormEvent, startTransition, useEffect, useState } from 'react';
 import { ConfigForm } from './components/ConfigForm';
+import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { HistoryPanel } from './components/HistoryPanel';
 import { ResultPanel } from './components/ResultPanel';
 import { UsagePanel } from './components/UsagePanel';
@@ -30,6 +31,7 @@ function App() {
   const [formState, setFormState] = useState<ImageFormState>(() => loadStoredSettings());
   const [history, setHistory] = useState<GenerationHistoryItem[]>([]);
   const [currentImage, setCurrentImage] = useState<GeneratedImage | null>(null);
+  const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [error, setError] = useState<ApiErrorState | null>(null);
@@ -103,6 +105,7 @@ function App() {
     void clearHistory();
     setHistory([]);
     setCurrentImage(null);
+    setPreviewImage(null);
   }
 
   function handleSelectHistory(item: GenerationHistoryItem) {
@@ -300,10 +303,19 @@ function App() {
               void refreshUsage();
             }}
           />
-          <ResultPanel image={currentImage} isSubmitting={isSubmitting} />
+          <ResultPanel
+            image={currentImage}
+            isSubmitting={isSubmitting}
+            onPreview={(image) => setPreviewImage(image)}
+          />
           <HistoryPanel history={history} onSelect={handleSelectHistory} onClear={handleClearHistory} />
         </div>
       </main>
+      <ImagePreviewModal
+        image={previewImage}
+        open={previewImage !== null}
+        onClose={() => setPreviewImage(null)}
+      />
     </div>
   );
 }

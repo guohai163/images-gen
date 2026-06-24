@@ -3,9 +3,10 @@ import type { GeneratedImage } from '../types';
 type ResultPanelProps = {
   image: GeneratedImage | null;
   isSubmitting: boolean;
+  onPreview: (image: GeneratedImage) => void;
 };
 
-export function ResultPanel({ image, isSubmitting }: ResultPanelProps) {
+export function ResultPanel({ image, isSubmitting, onPreview }: ResultPanelProps) {
   return (
     <section className="panel result-panel">
       <div className="panel-header">
@@ -22,11 +23,18 @@ export function ResultPanel({ image, isSubmitting }: ResultPanelProps) {
 
       {image ? (
         <div className="result-content">
-          <img
-            className="result-image"
-            src={image.imageDataUrl}
-            alt={image.prompt || '生成图片预览'}
-          />
+          <button
+            className="result-image-button"
+            type="button"
+            onClick={() => onPreview(image)}
+            aria-label="点击预览大图"
+          >
+            <img
+              className="result-image"
+              src={image.imageDataUrl}
+              alt={image.prompt || '生成图片预览'}
+            />
+          </button>
           <div className="result-meta">
             <div>
               <span>尺寸</span>
