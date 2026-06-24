@@ -9,6 +9,8 @@ import type {
 } from './types';
 import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from './constants';
 
+const MAX_REFERENCE_IMAGE_COUNT = 4;
+
 export function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -45,17 +47,34 @@ export function validateForm(formState: ImageFormState): string | null {
   return null;
 }
 
-export function validateUploadFile(file: File | null): string | null {
-  if (!file) {
+export function validateUploadFiles(
+  files: File[],
+  mode: ImageFormState['generationMode'],
+): string | null {
+  if (files.length === 0) {
     return null;
   }
 
-  if (!ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number])) {
-    return '仅支持 PNG、JPEG、WEBP 或 GIF 图片文件。';
+  if (mode === 'text') {
+    return '纯文本生成模式不需要上传图片。';
   }
 
-  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-    return '上传图片不能超过 10MB。';
+  if (mode === 'edit' && files.length > 1) {
+    return '编辑原图模式仅支持上传 1 张图片。';
+  }
+
+  if (mode === 'reference' && files.length > MAX_REFERENCE_IMAGE_COUNT) {
+    return `参考图生成最多支持上传 ${MAX_REFERENCE_IMAGE_COUNT} 张图片。`;
+  }
+
+  for (const file of files) {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number])) {
+      return '仅支持 PNG、JPEG、WEBP 或 GIF 图片文件。';
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      return '上传图片不能超过 10MB。';
+    }
   }
 
   return null;
@@ -147,7 +166,36 @@ export async function requestGenerate(
   return (await response.json()) as { data?: Array<{ b64_json?: string }> };
 }
 
-export async function requestGenerateWithImage(
+export async function requestGenerateWithReferenceImages(
+  payload: GenerateRequestPayload,
+  files: File[],
+): Promise<{ data?: Array<{ b64_json?: string }> }> {
+  const formData = new FormData();
+  formData.append('baseUrl', payload.baseUrl);
+  formData.append('apiKey', payload.apiKey);
+  formData.append('model', payload.model);
+  formData.append('prompt', payload.prompt);
+  formData.append('size', payload.size);
+  formData.append('quality', payload.quality);
+  formData.append('mode', payload.mode ?? 'reference');
+
+  for (const file of files) {
+    formData.append('image', file);
+  }
+
+  const response = await fetch('/api/generate', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return (await response.json()) as { data?: Array<{ b64_json?: string }> };
+}
+
+export async function requestGenerateWithEditImage(
   payload: GenerateRequestPayload,
   file: File,
 ): Promise<{ data?: Array<{ b64_json?: string }> }> {
@@ -209,10 +257,10 @@ export function formatMetric(value: number | undefined, digits = 2): string {
   });
 }
 
-export function createUploadPreviewState(file: File): UploadState {
+export function createUploadPreviewStateFromFiles(files: File[]): UploadState {
   return {
-    file,
-    previewUrl: URL.createObjectURL(file),
+    files,
+    previewUrls: files.map((file) => URL.createObjectURL(file)),
     error: null,
   };
 }

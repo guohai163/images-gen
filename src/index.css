@@ -109,15 +109,36 @@ a {
 .brand-lockup {
   display: flex;
   align-items: center;
+  gap: 20px;
   min-height: 196px;
 }
 
-.brand-logo {
+.brand-mark {
   display: block;
-  width: min(100%, 580px);
+  width: min(100%, 180px);
   height: auto;
   object-fit: contain;
   filter: drop-shadow(0 14px 24px rgba(30, 111, 163, 0.14));
+  flex-shrink: 0;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 8px;
+  color: #17548f;
+}
+
+.brand-copy strong {
+  font-family: "Baskerville", "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: clamp(2.2rem, 3.2vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.brand-copy span {
+  font-size: clamp(1rem, 1.5vw, 1.35rem);
+  letter-spacing: 0.06em;
+  color: #3a6f9e;
 }
 
 .hero-copy h1,
@@ -437,6 +458,47 @@ input:disabled {
   display: block;
 }
 
+.upload-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  padding: 18px;
+  width: 100%;
+}
+
+.upload-preview-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(88, 180, 192, 0.18);
+  text-align: left;
+}
+
+.upload-preview-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid rgba(88, 180, 192, 0.18);
+}
+
+.upload-preview-card-body {
+  min-width: 0;
+}
+
+.upload-preview-card-body strong,
+.upload-preview-card-body small {
+  display: block;
+}
+
+.upload-preview-card-body strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .usage-content,
 .usage-summary-grid,
 .usage-metrics-grid,
@@ -743,8 +805,8 @@ input:disabled {
     max-width: 14ch;
   }
 
-  .brand-logo {
-    width: min(100%, 520px);
+  .brand-mark {
+    width: min(100%, 170px);
   }
 }
 
@@ -777,10 +839,19 @@ input:disabled {
 
   .brand-lockup {
     min-height: auto;
+    gap: 14px;
   }
 
-  .brand-logo {
-    width: min(100%, 420px);
+  .brand-mark {
+    width: min(100%, 120px);
+  }
+
+  .brand-copy strong {
+    font-size: clamp(1.8rem, 9vw, 2.6rem);
+  }
+
+  .brand-copy span {
+    font-size: 1rem;
   }
 
   .history-item img {

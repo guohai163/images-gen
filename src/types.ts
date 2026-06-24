@@ -92,7 +92,7 @@ export type UsageRequestPayload = {
 };
 
 export type UploadState = {
-  file: File | null;
-  previewUrl: string | null;
+  files: File[];
+  previewUrls: string[];
   error: string | null;
 };

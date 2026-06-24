@@ -13,6 +13,7 @@ const IMAGE_PATH = '/v1/images/generations';
 const EDIT_PATH = '/v1/images/edits';
 const USAGE_PATH = '/v1/usage';
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_REFERENCE_IMAGE_COUNT = 4;
 const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -23,14 +24,14 @@ const upload = multer({
 
 app.use(express.json({ limit: '2mb' }));
 
-app.post('/api/generate', upload.single('image'), async (req, res) => {
+app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), async (req, res) => {
   const { baseUrl, apiKey, model, prompt, size, quality } = req.body ?? {};
   const mode = req.body?.mode ?? 'text';
-  const uploadedImage = req.file;
+  const uploadedImages = req.files ?? [];
 
   const validationError =
     validateBaseFields(baseUrl, apiKey) ||
-    validateGenerateFields(model, prompt, size, quality, mode, uploadedImage);
+    validateGenerateFields(model, prompt, size, quality, mode, uploadedImages);
 
   if (validationError) {
     res.status(400).json({
@@ -41,7 +42,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     return;
   }
 
-  const upstreamPath = uploadedImage ? EDIT_PATH : IMAGE_PATH;
+  const upstreamPath = mode === 'text' ? IMAGE_PATH : EDIT_PATH;
   const upstreamUrl = buildUpstreamUrl(baseUrl, upstreamPath);
   if (!upstreamUrl) {
     res.status(400).json({
@@ -53,18 +54,8 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
   }
 
   try {
-    const upstreamResponse = uploadedImage
-      ? await fetchWithImageEdit({
-          upstreamUrl,
-          apiKey,
-          model,
-          prompt,
-          size,
-          quality,
-          mode,
-          uploadedImage,
-        })
-      : await fetch(upstreamUrl, {
+    const upstreamResponse = mode === 'text'
+      ? await fetch(upstreamUrl, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey.trim()}`,
@@ -76,6 +67,15 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
             size,
             quality,
           }),
+        })
+      : await fetchWithImageEdit({
+          upstreamUrl,
+          apiKey,
+          model,
+          prompt,
+          size,
+          quality,
+          uploadedImages,
         });
 
     await proxyResponse(upstreamResponse, res);
@@ -184,7 +184,7 @@ function validateBaseFields(baseUrl, apiKey) {
   return null;
 }
 
-function validateGenerateFields(model, prompt, size, quality, mode, uploadedImage) {
+function validateGenerateFields(model, prompt, size, quality, mode, uploadedImages) {
   if (model !== 'gpt-image-2') {
     return '当前仅支持 gpt-image-2 模型。';
   }
@@ -208,7 +208,19 @@ function validateGenerateFields(model, prompt, size, quality, mode, uploadedImag
     return '生成模式无效。';
   }
 
-  if (uploadedImage) {
+  if (mode === 'text' && uploadedImages.length > 0) {
+    return '纯文本生成模式不需要上传图片。';
+  }
+
+  if (mode === 'edit' && uploadedImages.length > 1) {
+    return '编辑原图模式仅支持上传 1 张图片。';
+  }
+
+  if (mode === 'reference' && uploadedImages.length > MAX_REFERENCE_IMAGE_COUNT) {
+    return `参考图生成最多支持上传 ${MAX_REFERENCE_IMAGE_COUNT} 张图片。`;
+  }
+
+  for (const uploadedImage of uploadedImages) {
     if (!ACCEPTED_IMAGE_TYPES.has(uploadedImage.mimetype)) {
       return '仅支持 PNG、JPEG、WEBP 或 GIF 图片文件。';
     }
@@ -224,15 +236,21 @@ async function fetchWithImageEdit({
   prompt,
   size,
   quality,
-  mode,
-  uploadedImage,
+  uploadedImages,
 }) {
   const formData = new FormData();
   formData.append('model', model);
   formData.append('prompt', prompt.trim());
   formData.append('size', size);
   formData.append('quality', quality);
-  formData.append('image[]', new Blob([uploadedImage.buffer], { type: uploadedImage.mimetype }), uploadedImage.originalname);
+
+  for (const uploadedImage of uploadedImages) {
+    formData.append(
+      'image[]',
+      new Blob([uploadedImage.buffer], { type: uploadedImage.mimetype }),
+      uploadedImage.originalname,
+    );
+  }
 
   return fetch(upstreamUrl, {
     method: 'POST',
@@ -264,6 +282,15 @@ app.use((error, _req, res, next) => {
     res.status(400).json({
       error: {
         message: '上传图片不能超过 10MB。',
+      },
+    });
+    return;
+  }
+
+  if (error instanceof multer.MulterError && error.code === 'LIMIT_UNEXPECTED_FILE') {
+    res.status(400).json({
+      error: {
+        message: '参考图生成最多支持上传 4 张图片。',
       },
     });
     return;

@@ -13,8 +13,9 @@ type ConfigFormProps = {
   onToggleApiKey: () => void;
   onClearApiKey: () => void;
   onClearConfig: () => void;
-  onImageSelect: (file: File | null) => void;
-  onRemoveImage: () => void;
+  onImageSelect: (files: FileList | File[] | null) => void;
+  onRemoveImage: (index: number) => void;
+  onClearImages: () => void;
 };
 
 export function ConfigForm({
@@ -30,7 +31,11 @@ export function ConfigForm({
   onClearConfig,
   onImageSelect,
   onRemoveImage,
+  onClearImages,
 }: ConfigFormProps) {
+  const isReferenceMode = formState.generationMode === 'reference';
+  const isEditMode = formState.generationMode === 'edit';
+
   return (
     <section className="panel panel-form">
       <div className="panel-header">
@@ -116,10 +121,10 @@ export function ConfigForm({
             </button>
           </div>
           <small>
-            {formState.generationMode === 'reference'
-              ? '上传一张图片作为风格或主体参考，再结合提示词生成新图。'
-              : formState.generationMode === 'edit'
-                ? '上传一张原图，并用提示词描述你希望如何修改它。'
+            {isReferenceMode
+              ? '上传最多 4 张图片作为风格或主体参考，可继续追加后再结合提示词生成新图。'
+              : isEditMode
+                ? '上传 1 张原图，并用提示词描述你希望如何修改它。'
                 : '不上传图片时，将继续按当前提示词直接生成新图。'}
           </small>
         </div>
@@ -140,31 +145,61 @@ export function ConfigForm({
             <input
               className="upload-input"
               type="file"
+              multiple={isReferenceMode}
               accept={ACCEPTED_IMAGE_TYPES.join(',')}
-              onChange={(event) => onImageSelect(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                onImageSelect(event.target.files);
+                event.target.value = '';
+              }}
             />
-            {uploadState.previewUrl ? (
-              <div className="upload-preview">
-                <img src={uploadState.previewUrl} alt="上传预览" />
-                <div className="upload-preview-meta">
-                  <strong>{uploadState.file?.name ?? '已选择图片'}</strong>
-                  <small>
-                    {uploadState.file
-                      ? `${Math.max(1, Math.round(uploadState.file.size / 1024))} KB`
-                      : '当前上传图片'}
-                  </small>
+            {uploadState.files.length > 0 ? (
+              isReferenceMode ? (
+                <div className="upload-preview-grid">
+                  {uploadState.files.map((file, index) => (
+                    <div key={`${file.name}-${file.lastModified}-${index}`} className="upload-preview-card">
+                      <img src={uploadState.previewUrls[index]} alt={file.name} />
+                      <div className="upload-preview-card-body">
+                        <strong>{file.name}</strong>
+                        <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
+                      </div>
+                      <button className="ghost-button" type="button" onClick={() => onRemoveImage(index)}>
+                        移除
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="upload-preview">
+                  <img src={uploadState.previewUrls[0]} alt="上传预览" />
+                  <div className="upload-preview-meta">
+                    <strong>{uploadState.files[0]?.name ?? '已选择图片'}</strong>
+                    <small>
+                      {uploadState.files[0]
+                        ? `${Math.max(1, Math.round(uploadState.files[0].size / 1024))} KB`
+                        : '当前上传图片'}
+                    </small>
+                  </div>
+                </div>
+              )
             ) : (
               <div className="upload-empty">
-                <strong>点击或拖入一张图片</strong>
-                <small>支持 PNG、JPEG、WEBP、GIF，单张不超过 {MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。</small>
+                <strong>{isReferenceMode ? '点击或拖入参考图' : '点击或拖入一张图片'}</strong>
+                <small>
+                  {isReferenceMode
+                    ? `支持 PNG、JPEG、WEBP、GIF，最多 4 张，每张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`
+                    : `支持 PNG、JPEG、WEBP、GIF，单张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`}
+                </small>
               </div>
             )}
           </label>
-          {uploadState.file ? (
-            <button className="ghost-button" type="button" onClick={onRemoveImage}>
+          {uploadState.files.length > 0 && !isReferenceMode ? (
+            <button className="ghost-button" type="button" onClick={() => onRemoveImage(0)}>
               移除图片
+            </button>
+          ) : null}
+          {uploadState.files.length > 0 && isReferenceMode ? (
+            <button className="ghost-button" type="button" onClick={onClearImages}>
+              清空全部参考图
             </button>
           ) : null}
           {uploadState.error ? <small className="upload-error">{uploadState.error}</small> : null}

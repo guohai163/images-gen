@@ -17,14 +17,15 @@ import type {
 import {
   createHistoryItem,
   createImageDataUrl,
-  createUploadPreviewState,
+  createUploadPreviewStateFromFiles,
   fetchUsage,
   isApiErrorState,
   normalizeBaseUrl,
   requestGenerate,
-  requestGenerateWithImage,
+  requestGenerateWithEditImage,
+  requestGenerateWithReferenceImages,
   validateForm,
-  validateUploadFile,
+  validateUploadFiles,
 } from './utils';
 
 function App() {
@@ -36,8 +37,8 @@ function App() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [error, setError] = useState<ApiErrorState | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>({
-    file: null,
-    previewUrl: null,
+    files: [],
+    previewUrls: [],
     error: null,
   });
   const [usageState, setUsageState] = useState<UsageState>({
@@ -67,11 +68,11 @@ function App() {
 
   useEffect(() => {
     return () => {
-      if (uploadState.previewUrl) {
-        URL.revokeObjectURL(uploadState.previewUrl);
+      for (const previewUrl of uploadState.previewUrls) {
+        URL.revokeObjectURL(previewUrl);
       }
     };
-  }, [uploadState.previewUrl]);
+  }, [uploadState.previewUrls]);
 
   useEffect(() => {
     if (!normalizeBaseUrl(formState.baseUrl) || !formState.apiKey.trim()) {
@@ -82,6 +83,44 @@ function App() {
   }, []);
 
   function updateField<K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) {
+    if (field === 'generationMode') {
+      setUploadState((current) => {
+        const nextMode = value as ImageFormState['generationMode'];
+        if (nextMode === 'text') {
+          for (const previewUrl of current.previewUrls) {
+            URL.revokeObjectURL(previewUrl);
+          }
+
+          return {
+            files: [],
+            previewUrls: [],
+            error: null,
+          };
+        }
+
+        if (nextMode === 'edit' && current.files.length > 1) {
+          const [firstFile] = current.files;
+          const [firstPreviewUrl] = current.previewUrls;
+
+          for (const previewUrl of current.previewUrls.slice(1)) {
+            URL.revokeObjectURL(previewUrl);
+          }
+
+          return {
+            files: firstFile ? [firstFile] : [],
+            previewUrls: firstPreviewUrl ? [firstPreviewUrl] : [],
+            error: null,
+          };
+        }
+
+        const nextError = validateUploadFiles(current.files, nextMode);
+        return {
+          ...current,
+          error: nextError,
+        };
+      });
+    }
+
     setFormState((current) => ({
       ...current,
       [field]: value,
@@ -126,35 +165,63 @@ function App() {
 
   function clearUploadState() {
     setUploadState((current) => {
-      if (current.previewUrl) {
-        URL.revokeObjectURL(current.previewUrl);
+      for (const previewUrl of current.previewUrls) {
+        URL.revokeObjectURL(previewUrl);
       }
 
       return {
-        file: null,
-        previewUrl: null,
+        files: [],
+        previewUrls: [],
         error: null,
       };
     });
   }
 
-  function handleImageSelect(file: File | null) {
-    const uploadError = validateUploadFile(file);
+  function handleImageSelect(fileList: FileList | File[] | null) {
+    const incomingFiles = fileList ? Array.from(fileList) : [];
 
     setUploadState((current) => {
-      if (current.previewUrl) {
-        URL.revokeObjectURL(current.previewUrl);
+      if (incomingFiles.length === 0) {
+        return current;
       }
 
-      if (!file || uploadError) {
+      const nextFiles =
+        formState.generationMode === 'reference'
+          ? [...current.files, ...incomingFiles]
+          : incomingFiles.slice(0, 1);
+      const uploadError = validateUploadFiles(nextFiles, formState.generationMode);
+
+      if (uploadError) {
         return {
-          file: null,
-          previewUrl: null,
+          ...current,
           error: uploadError,
         };
       }
 
-      return createUploadPreviewState(file);
+      for (const previewUrl of current.previewUrls) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      return createUploadPreviewStateFromFiles(nextFiles);
+    });
+  }
+
+  function handleRemoveImage(index: number) {
+    setUploadState((current) => {
+      const nextFiles = current.files.filter((_, fileIndex) => fileIndex !== index);
+      const nextPreviewUrls = current.previewUrls.filter((_, fileIndex) => fileIndex !== index);
+      const removedPreviewUrl = current.previewUrls[index];
+
+      if (removedPreviewUrl) {
+        URL.revokeObjectURL(removedPreviewUrl);
+      }
+
+      const nextError = validateUploadFiles(nextFiles, formState.generationMode);
+      return {
+        files: nextFiles,
+        previewUrls: nextPreviewUrls,
+        error: nextError,
+      };
     });
   }
 
@@ -230,9 +297,11 @@ function App() {
         mode: formState.generationMode,
       } as const;
       const payload =
-        uploadState.file && formState.generationMode !== 'text'
-          ? await requestGenerateWithImage(payloadData, uploadState.file)
-          : await requestGenerate(payloadData);
+        formState.generationMode === 'reference' && uploadState.files.length > 0
+          ? await requestGenerateWithReferenceImages(payloadData, uploadState.files)
+          : formState.generationMode === 'edit' && uploadState.files[0]
+            ? await requestGenerateWithEditImage(payloadData, uploadState.files[0])
+            : await requestGenerate(payloadData);
       const base64 = payload.data?.[0]?.b64_json;
 
       if (!base64) {
@@ -267,11 +336,11 @@ function App() {
     <div className="app-shell">
       <header className="hero">
         <div className="brand-lockup" aria-label="魔法画布 The Magic Canvas">
-          <img
-            className="brand-logo"
-            src="/branding/magic-canvas-logo.png"
-            alt="魔法画布 The Magic Canvas"
-          />
+          <img className="brand-mark" src="/branding/magic-canvas-mark.png" alt="魔法画布图标" />
+          <div className="brand-copy">
+            <strong>魔法画布</strong>
+            <span>The Magic Canvas</span>
+          </div>
         </div>
         <aside className="warning-card">
           <strong>安全提示</strong>
@@ -292,7 +361,8 @@ function App() {
           onClearApiKey={() => updateField('apiKey', '')}
           onClearConfig={handleClearConfig}
           onImageSelect={handleImageSelect}
-          onRemoveImage={clearUploadState}
+          onRemoveImage={handleRemoveImage}
+          onClearImages={clearUploadState}
         />
 
         <div className="side-column">
