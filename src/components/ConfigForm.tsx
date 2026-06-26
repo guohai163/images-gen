@@ -1,143 +1,242 @@
 import type { FormEvent } from 'react';
-import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES, QUALITY_OPTIONS, SIZE_PRESETS } from '../constants';
+import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES, QUALITY_OPTIONS, SIZE_PRESETS, STYLE_PRESETS } from '../constants';
 import type { ApiErrorState, ImageFormState, UploadState } from '../types';
+import { getCustomSizeHint } from '../utils';
 
 type ConfigFormProps = {
   formState: ImageFormState;
   uploadState: UploadState;
   isSubmitting: boolean;
-  showApiKey: boolean;
   error: ApiErrorState | null;
+  advancedOpen: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: <K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) => void;
-  onToggleApiKey: () => void;
-  onClearApiKey: () => void;
-  onClearConfig: () => void;
-  onImageSelect: (files: FileList | File[] | null) => void;
   onRemoveImage: (index: number) => void;
+  onImageSelect: (files: FileList | File[] | null) => void;
   onClearImages: () => void;
+  onAdvancedToggle: () => void;
+  onResetCreativeFields: () => void;
 };
+
+const MODE_OPTIONS: Array<{
+  value: ImageFormState['generationMode'];
+  label: string;
+  icon: string;
+}> = [
+  { value: 'text', label: '文生图', icon: 'T' },
+  { value: 'reference', label: '图生图', icon: '▣' },
+  { value: 'edit', label: '图片编辑', icon: '✎' },
+];
+
+const COUNT_OPTIONS: Array<ImageFormState['outputCount']> = [1, 2, 4];
 
 export function ConfigForm({
   formState,
   uploadState,
   isSubmitting,
-  showApiKey,
   error,
+  advancedOpen,
   onSubmit,
   onFieldChange,
-  onToggleApiKey,
-  onClearApiKey,
-  onClearConfig,
-  onImageSelect,
   onRemoveImage,
+  onImageSelect,
   onClearImages,
+  onAdvancedToggle,
+  onResetCreativeFields,
 }: ConfigFormProps) {
   const isReferenceMode = formState.generationMode === 'reference';
   const isEditMode = formState.generationMode === 'edit';
+  const customSizeHint = getCustomSizeHint(formState.customWidth, formState.customHeight);
 
   return (
-    <section className="panel panel-form">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">生成配置</p>
-          <h2>直接从浏览器发起图片生成</h2>
-        </div>
-        <button className="ghost-button" type="button" onClick={onClearConfig}>
-          清空配置
-        </button>
-      </div>
-
+    <section className="workspace-panel config-panel control-panel">
       <form className="config-form" onSubmit={onSubmit}>
-        <label className="field">
-          <span>接口域名</span>
-          <input
-            type="text"
-            placeholder="请输入带中转站的接口域名"
-            value={formState.baseUrl}
-            onChange={(event) => onFieldChange('baseUrl', event.target.value)}
-          />
-          <small>请输入带中转站的域名；如果没有填写协议，系统会自动补全 `https://`。</small>
-        </label>
+        <div className="mode-segmented mode-tabs" role="tablist" aria-label="生成模式">
+          {MODE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              className={formState.generationMode === option.value ? 'segment-button mode-tab is-active' : 'segment-button mode-tab'}
+              type="button"
+              onClick={() => onFieldChange('generationMode', option.value)}
+            >
+              <span className="segment-icon" aria-hidden="true">
+                {option.icon}
+              </span>
+              {option.label}
+            </button>
+          ))}
+        </div>
 
         <label className="field">
-          <span>API Key</span>
-          <div className="input-with-actions">
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              placeholder="sk-..."
-              value={formState.apiKey}
-              onChange={(event) => onFieldChange('apiKey', event.target.value)}
+          <div className="field-head">
+            <span>提示词</span>
+            <button className="tiny-button mini-button" type="button" onClick={onResetCreativeFields}>
+              ✧ 清空灵感
+            </button>
+          </div>
+          <div className="textarea-wrap">
+            <textarea
+              rows={6}
+              placeholder="一只穿着星空斗篷的白猫魔法师，站在发光的魔法阵上..."
+              value={formState.prompt}
+              onChange={(event) => onFieldChange('prompt', event.target.value)}
             />
-            <button className="inline-button" type="button" onClick={onToggleApiKey}>
-              {showApiKey ? '隐藏' : '显示'}
-            </button>
-            <button className="inline-button" type="button" onClick={onClearApiKey}>
-              清空
-            </button>
+            <span className="counter">{formState.prompt.trim().length}/1000</span>
           </div>
         </label>
 
-        <div className="field-row">
-          <label className="field">
-            <span>模型</span>
-            <input type="text" value={formState.model} disabled />
-          </label>
-          <label className="field">
-            <span>品质</span>
-            <select value={formState.quality} onChange={(event) => onFieldChange('quality', event.target.value as ImageFormState['quality'])}>
-              {QUALITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <label className="field">
+          <div className="field-head">
+            <span>负面提示词</span>
+            <small>可选</small>
+          </div>
+          <div className="textarea-wrap">
+            <textarea
+              rows={3}
+              placeholder="如：模糊、低质量、畸形、文字、水印"
+              value={formState.negativePrompt}
+              onChange={(event) => onFieldChange('negativePrompt', event.target.value)}
+            />
+            <span className="counter">{formState.negativePrompt.trim().length}/1000</span>
+          </div>
+        </label>
+
+        <div className="field">
+          <div className="field-head">
+            <span>风格预设</span>
+          </div>
+          <div className="style-preset-grid style-grid">
+            {STYLE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                className={formState.stylePreset === preset.id ? 'style-preset-card style-card is-active' : 'style-preset-card style-card'}
+                type="button"
+                onClick={() => onFieldChange('stylePreset', preset.id)}
+              >
+                <span className="style-preset-art style-thumb" style={{ background: preset.swatch }} aria-hidden="true" />
+                <strong className="style-name">{preset.label}</strong>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="field">
-          <span>生成方式</span>
-          <div className="mode-toggle">
+          <div className="field-head">
+            <span>图片比例</span>
+            <small>gpt-image-2 size</small>
+          </div>
+          <div className="ratio-grid chip-grid">
+            {SIZE_PRESETS.map((preset) => {
+              const isActive = formState.sizeMode === 'preset' && formState.size === preset.value;
+              return (
+                <button
+                  key={preset.value}
+                  className={isActive ? 'option-chip chip is-active' : 'option-chip chip'}
+                  type="button"
+                  onClick={() => {
+                    onFieldChange('sizeMode', 'preset');
+                    onFieldChange('size', preset.value);
+                  }}
+                >
+                  <strong>{preset.label}</strong>
+                  <span>{preset.ratioLabel}</span>
+                </button>
+              );
+            })}
             <button
-              className={formState.generationMode === 'text' ? 'mode-button is-active' : 'mode-button'}
+              className={formState.sizeMode === 'custom' ? 'option-chip chip is-active' : 'option-chip chip'}
               type="button"
-              onClick={() => onFieldChange('generationMode', 'text')}
+              onClick={() => {
+                onFieldChange('sizeMode', 'custom');
+                onFieldChange('size', `${formState.customWidth}x${formState.customHeight}`);
+              }}
             >
-              纯文本生成
-            </button>
-            <button
-              className={formState.generationMode === 'reference' ? 'mode-button is-active' : 'mode-button'}
-              type="button"
-              onClick={() => onFieldChange('generationMode', 'reference')}
-            >
-              参考图生成
-            </button>
-            <button
-              className={formState.generationMode === 'edit' ? 'mode-button is-active' : 'mode-button'}
-              type="button"
-              onClick={() => onFieldChange('generationMode', 'edit')}
-            >
-              编辑原图
+              <strong>自定义</strong>
+              <span>宽高输入</span>
             </button>
           </div>
-          <small>
-            {isReferenceMode
-              ? '上传最多 4 张图片作为风格或主体参考，可继续追加后再结合提示词生成新图。'
-              : isEditMode
-                ? '上传 1 张原图，并用提示词描述你希望如何修改它。'
-                : '不上传图片时，将继续按当前提示词直接生成新图。'}
-          </small>
+
+          {formState.sizeMode === 'custom' ? (
+            <div className="custom-size-box">
+              <div className="input-group">
+                <label htmlFor="customWidth">宽度 px</label>
+                <input
+                  id="customWidth"
+                  type="number"
+                  min="256"
+                  max="3840"
+                  step="16"
+                  value={formState.customWidth}
+                  onChange={(event) => {
+                    onFieldChange('customWidth', event.target.value);
+                    onFieldChange('size', `${event.target.value}x${formState.customHeight}`);
+                  }}
+                />
+              </div>
+              <div className="dimension-link">⌁</div>
+              <div className="input-group">
+                <label htmlFor="customHeight">高度 px</label>
+                <input
+                  id="customHeight"
+                  type="number"
+                  min="256"
+                  max="3840"
+                  step="16"
+                  value={formState.customHeight}
+                  onChange={(event) => {
+                    onFieldChange('customHeight', event.target.value);
+                    onFieldChange('size', `${formState.customWidth}x${event.target.value}`);
+                  }}
+                />
+              </div>
+              <div className="hint custom-size-hint">{customSizeHint}</div>
+            </div>
+          ) : null}
         </div>
 
-        <label className="field">
-          <span>提示词</span>
-          <textarea
-            rows={8}
-            placeholder="描述你想生成的图像内容、风格、氛围、镜头感等"
-            value={formState.prompt}
-            onChange={(event) => onFieldChange('prompt', event.target.value)}
-          />
-        </label>
+        <div className="compact-control-grid control-row">
+          <div className="field">
+            <span>生成数量</span>
+            <div className="inline-option-group number-options">
+              {COUNT_OPTIONS.map((value) => (
+                <button
+                  key={value}
+                  className={formState.outputCount === value ? 'option-pill small-option is-active' : 'option-pill small-option'}
+                  type="button"
+                  onClick={() => onFieldChange('outputCount', value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <span>生成质量</span>
+            <div className="inline-option-group quality-options">
+              {QUALITY_OPTIONS.filter((option) => option.value === 'medium' || option.value === 'high').map((option) => (
+                <button
+                  key={option.value}
+                  className={formState.quality === option.value ? 'option-pill small-option is-active' : 'option-pill small-option'}
+                  type="button"
+                  onClick={() => onFieldChange('quality', option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="field">
+            <span>随机种子</span>
+            <input
+              type="text"
+              placeholder="选填"
+              value={formState.seed}
+              onChange={(event) => onFieldChange('seed', event.target.value)}
+            />
+          </label>
+        </div>
 
         <div className="field">
           <span>输入图片</span>
@@ -183,15 +282,20 @@ export function ConfigForm({
               )
             ) : (
               <div className="upload-empty">
-                <strong>{isReferenceMode ? '点击或拖入参考图' : '点击或拖入一张图片'}</strong>
+                <strong>
+                  {isReferenceMode ? '点击或拖入参考图' : isEditMode ? '点击或拖入待编辑图片' : '文生图模式无需上传'}
+                </strong>
                 <small>
                   {isReferenceMode
                     ? `支持 PNG、JPEG、WEBP、GIF，最多 4 张，每张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`
-                    : `支持 PNG、JPEG、WEBP、GIF，单张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`}
+                    : isEditMode
+                      ? `支持 PNG、JPEG、WEBP、GIF，单张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`
+                      : '切换到图生图或图片编辑后，这里会变成图片上传区。'}
                 </small>
               </div>
             )}
           </label>
+
           {uploadState.files.length > 0 && !isReferenceMode ? (
             <button className="ghost-button" type="button" onClick={() => onRemoveImage(0)}>
               移除图片
@@ -205,16 +309,26 @@ export function ConfigForm({
           {uploadState.error ? <small className="upload-error">{uploadState.error}</small> : null}
         </div>
 
-        <div className="field">
-          <span>图片尺寸</span>
-          <select value={formState.size} onChange={(event) => onFieldChange('size', event.target.value as ImageFormState['size'])}>
-            {SIZE_PRESETS.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-          <small>仅保留官方支持的尺寸选项，带图生成时最终画幅仍可能受输入图影响。</small>
+        <div className="advanced-settings">
+          <button
+            className={advancedOpen ? 'advanced-toggle advanced is-open' : 'advanced-toggle advanced'}
+            type="button"
+            onClick={onAdvancedToggle}
+          >
+            <span>高级设置</span>
+            <span>{advancedOpen ? '⌃' : '⌄'}</span>
+          </button>
+          {advancedOpen ? (
+            <div className="advanced-content">
+              <label className="field">
+                <span>当前模型</span>
+                <input type="text" value={formState.model} disabled />
+              </label>
+              <p className="advanced-note">
+                `负面提示词 / 风格预设 / 生成数量 / 随机种子` 当前为前端工作流预留，不会改变后端接口请求。
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {error ? (
@@ -225,9 +339,14 @@ export function ConfigForm({
           </div>
         ) : null}
 
-        <button className="submit-button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? '生成中...' : '生成图片'}
-        </button>
+        <div className="form-actions footer-actions">
+          <button className="submit-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? '生成中...' : '✨ 立即生成'}
+          </button>
+          <button className="secondary-button" type="button" onClick={onResetCreativeFields}>
+            ⌫ 清空
+          </button>
+        </div>
       </form>
     </section>
   );

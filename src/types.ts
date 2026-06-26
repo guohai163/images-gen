@@ -3,10 +3,25 @@ export type ImageFormState = {
   apiKey: string;
   model: 'gpt-image-2';
   prompt: string;
-  size: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
+  negativePrompt: string;
+  stylePreset: StylePresetId;
+  outputCount: 1 | 2 | 4;
+  seed: string;
+  sizeMode: 'preset' | 'custom';
+  size: string;
+  customWidth: string;
+  customHeight: string;
   quality: 'low' | 'medium' | 'high' | 'auto';
   generationMode: 'text' | 'reference' | 'edit';
 };
+
+export type StylePresetId =
+  | 'none'
+  | 'realistic'
+  | 'illustration'
+  | 'anime'
+  | 'three-d'
+  | 'cyberpunk';
 
 export type GenerationHistoryItem = {
   id: string;
@@ -28,7 +43,31 @@ export type GeneratedImage = GenerationHistoryItem;
 
 export type SizePreset = {
   label: string;
-  value: ImageFormState['size'];
+  value: string;
+  ratioLabel: string;
+};
+
+export type StylePreset = {
+  id: StylePresetId;
+  label: string;
+  promptHint: string;
+  swatch: string;
+};
+
+export type PromptReferenceItem = {
+  id: string;
+  title: string;
+  category: string;
+  content: string;
+  images: string[];
+  tags: string[];
+  source: string;
+  sourceUrl: string;
+};
+
+export type PromptReferenceResponse = {
+  items: PromptReferenceItem[];
+  sourceLabel: string;
 };
 
 export type UsageResponse = {
@@ -95,4 +134,15 @@ export type UploadState = {
   files: File[];
   previewUrls: string[];
   error: string | null;
+};
+
+export type AppPage = 'ai-image' | 'prompt-plaza' | 'settings';
+
+export type DisplayLanguage = 'zh' | 'en';
+
+export type ThemeMode = 'light' | 'dark';
+
+export type DisplayPreferences = {
+  language: DisplayLanguage;
+  theme: ThemeMode;
 };

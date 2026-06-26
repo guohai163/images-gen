@@ -1,11 +1,23 @@
-import { DEFAULT_FORM_STATE, HISTORY_LIMIT, INDEXED_DB, STORAGE_KEYS } from './constants';
-import type { GenerationHistoryItem, ImageFormState } from './types';
+import { DEFAULT_DISPLAY_PREFERENCES, DEFAULT_FORM_STATE, HISTORY_LIMIT, INDEXED_DB, STORAGE_KEYS } from './constants';
+import type { DisplayPreferences, GenerationHistoryItem, ImageFormState } from './types';
 
 const hasWindow = typeof window !== 'undefined';
 
 type StoredSettings = Pick<
   ImageFormState,
-  'baseUrl' | 'apiKey' | 'prompt' | 'size' | 'quality' | 'generationMode'
+  | 'baseUrl'
+  | 'apiKey'
+  | 'prompt'
+  | 'negativePrompt'
+  | 'stylePreset'
+  | 'outputCount'
+  | 'seed'
+  | 'sizeMode'
+  | 'size'
+  | 'customWidth'
+  | 'customHeight'
+  | 'quality'
+  | 'generationMode'
 >;
 
 export function loadStoredSettings(): ImageFormState {
@@ -25,13 +37,21 @@ export function loadStoredSettings(): ImageFormState {
       baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
       apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
       prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
-      size:
-        parsed.size === '1024x1024' ||
-        parsed.size === '1024x1536' ||
-        parsed.size === '1536x1024' ||
-        parsed.size === 'auto'
-          ? parsed.size
-          : DEFAULT_FORM_STATE.size,
+      negativePrompt: typeof parsed.negativePrompt === 'string' ? parsed.negativePrompt : '',
+      stylePreset:
+        parsed.stylePreset === 'realistic' ||
+        parsed.stylePreset === 'illustration' ||
+        parsed.stylePreset === 'anime' ||
+        parsed.stylePreset === 'three-d' ||
+        parsed.stylePreset === 'cyberpunk'
+          ? parsed.stylePreset
+          : DEFAULT_FORM_STATE.stylePreset,
+      outputCount: parsed.outputCount === 2 || parsed.outputCount === 4 ? parsed.outputCount : DEFAULT_FORM_STATE.outputCount,
+      seed: typeof parsed.seed === 'string' ? parsed.seed : '',
+      sizeMode: parsed.sizeMode === 'custom' ? 'custom' : DEFAULT_FORM_STATE.sizeMode,
+      size: typeof parsed.size === 'string' && parsed.size.trim() ? parsed.size : DEFAULT_FORM_STATE.size,
+      customWidth: typeof parsed.customWidth === 'string' && parsed.customWidth.trim() ? parsed.customWidth : DEFAULT_FORM_STATE.customWidth,
+      customHeight: typeof parsed.customHeight === 'string' && parsed.customHeight.trim() ? parsed.customHeight : DEFAULT_FORM_STATE.customHeight,
       quality:
         parsed.quality === 'low' ||
         parsed.quality === 'medium' ||
@@ -58,7 +78,14 @@ export function saveStoredSettings(formState: ImageFormState): void {
     baseUrl: formState.baseUrl,
     apiKey: formState.apiKey,
     prompt: formState.prompt,
+    negativePrompt: formState.negativePrompt,
+    stylePreset: formState.stylePreset,
+    outputCount: formState.outputCount,
+    seed: formState.seed,
+    sizeMode: formState.sizeMode,
     size: formState.size,
+    customWidth: formState.customWidth,
+    customHeight: formState.customHeight,
     quality: formState.quality,
     generationMode: formState.generationMode,
   };
@@ -72,6 +99,65 @@ export function clearStoredSettings(): void {
   }
 
   window.localStorage.removeItem(STORAGE_KEYS.settings);
+}
+
+export function loadDisplayPreferences(): DisplayPreferences {
+  if (!hasWindow) {
+    return DEFAULT_DISPLAY_PREFERENCES;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.preferences);
+    if (!raw) {
+      return DEFAULT_DISPLAY_PREFERENCES;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<DisplayPreferences>;
+    return {
+      language: parsed.language === 'en' ? 'en' : DEFAULT_DISPLAY_PREFERENCES.language,
+      theme: parsed.theme === 'dark' ? 'dark' : DEFAULT_DISPLAY_PREFERENCES.theme,
+    };
+  } catch {
+    return DEFAULT_DISPLAY_PREFERENCES;
+  }
+}
+
+export function saveDisplayPreferences(preferences: DisplayPreferences): void {
+  if (!hasWindow) {
+    return;
+  }
+
+  window.localStorage.setItem(STORAGE_KEYS.preferences, JSON.stringify(preferences));
+}
+
+export function loadFavoriteHistoryIds(): string[] {
+  if (!hasWindow) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.favorites);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((item): item is string => typeof item === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function saveFavoriteHistoryIds(ids: string[]): void {
+  if (!hasWindow) {
+    return;
+  }
+
+  window.localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(ids));
 }
 
 export async function loadHistory(): Promise<GenerationHistoryItem[]> {

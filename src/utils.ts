@@ -3,11 +3,13 @@ import type {
   GenerateRequestPayload,
   GeneratedImage,
   ImageFormState,
+  PromptReferenceItem,
+  PromptReferenceResponse,
   UploadState,
   UsageRequestPayload,
   UsageResponse,
 } from './types';
-import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from './constants';
+import { ACCEPTED_IMAGE_TYPES, CUSTOM_SIZE_LIMITS, MAX_UPLOAD_SIZE_BYTES } from './constants';
 
 const MAX_REFERENCE_IMAGE_COUNT = 4;
 
@@ -34,8 +36,12 @@ export function validateForm(formState: ImageFormState): string | null {
     return '请填写提示词后再生成图片。';
   }
 
-  const validSizes = new Set(['1024x1024', '1024x1536', '1536x1024', 'auto']);
-  if (!validSizes.has(formState.size)) {
+  if (formState.sizeMode === 'custom') {
+    const customSizeValidation = validateCustomSize(formState.customWidth, formState.customHeight);
+    if (customSizeValidation) {
+      return customSizeValidation;
+    }
+  } else if (!isValidSizeString(formState.size)) {
     return '请选择受支持的图片尺寸。';
   }
 
@@ -45,6 +51,88 @@ export function validateForm(formState: ImageFormState): string | null {
   }
 
   return null;
+}
+
+export function isValidSizeString(value: string): boolean {
+  return /^\d+x\d+$/i.test(value.trim());
+}
+
+export function normalizeSizeString(width: string | number, height: string | number): string {
+  return `${String(width).trim()}x${String(height).trim()}`;
+}
+
+export function parseSizeString(value: string): { width: number; height: number } | null {
+  const match = value.trim().match(/^(\d+)x(\d+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  return { width, height };
+}
+
+export function validateCustomSize(widthValue: string, heightValue: string): string | null {
+  const width = Number(widthValue);
+  const height = Number(heightValue);
+
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return '自定义尺寸需要填写有效的宽度和高度。';
+  }
+
+  if (width % CUSTOM_SIZE_LIMITS.step !== 0 || height % CUSTOM_SIZE_LIMITS.step !== 0) {
+    return `宽度和高度都必须能被 ${CUSTOM_SIZE_LIMITS.step} 整除。`;
+  }
+
+  const longEdge = Math.max(width, height);
+  const shortEdge = Math.min(width, height);
+  const ratio = longEdge / shortEdge;
+  const totalPixels = width * height;
+
+  if (ratio > CUSTOM_SIZE_LIMITS.maxRatio) {
+    return `宽高比例不能超过 ${CUSTOM_SIZE_LIMITS.maxRatio}:1。`;
+  }
+
+  if (longEdge > CUSTOM_SIZE_LIMITS.maxLongEdge) {
+    return `最长边不能超过 ${CUSTOM_SIZE_LIMITS.maxLongEdge}px。`;
+  }
+
+  if (shortEdge < CUSTOM_SIZE_LIMITS.minShortEdge) {
+    return `最短边不能小于 ${CUSTOM_SIZE_LIMITS.minShortEdge}px。`;
+  }
+
+  if (totalPixels < CUSTOM_SIZE_LIMITS.minPixels || totalPixels > CUSTOM_SIZE_LIMITS.maxPixels) {
+    return `总像素需介于 ${CUSTOM_SIZE_LIMITS.minPixels.toLocaleString('zh-CN')} 和 ${CUSTOM_SIZE_LIMITS.maxPixels.toLocaleString('zh-CN')} 之间。`;
+  }
+
+  return null;
+}
+
+export function getResolvedSize(formState: ImageFormState): string {
+  return formState.sizeMode === 'custom'
+    ? normalizeSizeString(formState.customWidth, formState.customHeight)
+    : formState.size;
+}
+
+export function getCustomSizeHint(widthValue: string, heightValue: string): string {
+  const width = Number(widthValue);
+  const height = Number(heightValue);
+
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return '请输入有效的宽度和高度，单位为 px。';
+  }
+
+  const validationMessage = validateCustomSize(widthValue, heightValue);
+  if (validationMessage) {
+    return validationMessage;
+  }
+
+  return `当前尺寸：${width}x${height}，宽高均可被 ${CUSTOM_SIZE_LIMITS.step} 整除。`;
 }
 
 export function validateUploadFiles(
@@ -103,10 +191,9 @@ export function createHistoryItem(
   imageDataUrl: string,
   createdAt = new Date(),
 ): GeneratedImage {
-  const [width, height] =
-    formState.size === 'auto'
-      ? [0, 0]
-      : formState.size.split('x').map((value) => Number(value));
+  const resolvedSize = getResolvedSize(formState);
+  const parsedSize = parseSizeString(resolvedSize);
+  const [width, height] = parsedSize ? [parsedSize.width, parsedSize.height] : [0, 0];
 
   return {
     id: `${createdAt.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -237,6 +324,16 @@ export async function fetchUsage(payload: UsageRequestPayload): Promise<UsageRes
   return (await response.json()) as UsageResponse;
 }
 
+export async function fetchPromptReference(): Promise<PromptReferenceResponse> {
+  const response = await fetch('/api/prompt-reference');
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return (await response.json()) as PromptReferenceResponse;
+}
+
 export function isApiErrorState(value: unknown): value is ApiErrorState {
   if (!value || typeof value !== 'object') {
     return false;
@@ -263,4 +360,46 @@ export function createUploadPreviewStateFromFiles(files: File[]): UploadState {
     previewUrls: files.map((file) => URL.createObjectURL(file)),
     error: null,
   };
+}
+
+export function filterPromptReferenceItems(
+  items: PromptReferenceItem[],
+  selectedCategory: string,
+  searchQuery: string,
+): PromptReferenceItem[] {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  return items.filter((item) => {
+    if (selectedCategory !== '全部' && item.category !== selectedCategory) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.content,
+      item.category,
+      item.source,
+      ...item.tags,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function getPromptReferenceCategories(items: PromptReferenceItem[]): string[] {
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (item.category.trim()) {
+      seen.add(item.category.trim());
+    }
+  }
+
+  return ['全部', ...Array.from(seen)];
 }

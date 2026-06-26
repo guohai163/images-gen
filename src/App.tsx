@@ -1,16 +1,36 @@
 import { type FormEvent, startTransition, useEffect, useState } from 'react';
 import { ConfigForm } from './components/ConfigForm';
-import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { HistoryPanel } from './components/HistoryPanel';
+import { ImagePreviewModal } from './components/ImagePreviewModal';
+import { PromptReference } from './components/PromptReference';
 import { ResultPanel } from './components/ResultPanel';
-import { UsagePanel } from './components/UsagePanel';
-import { DEFAULT_FORM_STATE, HISTORY_LIMIT } from './constants';
-import { clearHistory, clearStoredSettings, loadHistory, loadStoredSettings, saveHistory, saveStoredSettings } from './storage';
+import { SettingsPanel } from './components/SettingsPanel';
+import {
+  DEFAULT_DISPLAY_PREFERENCES,
+  DEFAULT_FORM_STATE,
+  HISTORY_LIMIT,
+} from './constants';
+import {
+  clearHistory,
+  clearStoredSettings,
+  loadDisplayPreferences,
+  loadFavoriteHistoryIds,
+  loadHistory,
+  loadStoredSettings,
+  saveDisplayPreferences,
+  saveFavoriteHistoryIds,
+  saveHistory,
+  saveStoredSettings,
+} from './storage';
 import type {
   ApiErrorState,
+  AppPage,
+  DisplayLanguage,
   GeneratedImage,
   GenerationHistoryItem,
   ImageFormState,
+  PromptReferenceItem,
+  ThemeMode,
   UploadState,
   UsageState,
 } from './types';
@@ -18,9 +38,14 @@ import {
   createHistoryItem,
   createImageDataUrl,
   createUploadPreviewStateFromFiles,
+  fetchPromptReference,
   fetchUsage,
+  filterPromptReferenceItems,
+  getResolvedSize,
+  getPromptReferenceCategories,
   isApiErrorState,
   normalizeBaseUrl,
+  parseSizeString,
   requestGenerate,
   requestGenerateWithEditImage,
   requestGenerateWithReferenceImages,
@@ -28,7 +53,34 @@ import {
   validateUploadFiles,
 } from './utils';
 
+const NAV_ITEMS: Array<{
+  id: AppPage;
+  icon: string;
+  title: { zh: string; en: string };
+  description: { zh: string; en: string };
+}> = [
+  {
+    id: 'ai-image',
+    icon: '✦',
+    title: { zh: 'Ai生图', en: 'AI Image' },
+    description: { zh: '通过 GPT Image 接口生成高质量图片', en: 'Create premium visuals with GPT Image' },
+  },
+  {
+    id: 'prompt-plaza',
+    icon: '◫',
+    title: { zh: '提示词参考', en: 'Prompt Reference' },
+    description: { zh: '复用外部提示词库，一键带回创作页', en: 'Browse external prompt references and jump back to create' },
+  },
+  {
+    id: 'settings',
+    icon: '⚙',
+    title: { zh: '设置', en: 'Settings' },
+    description: { zh: '管理接口配置、用量与安全提示', en: 'Manage credentials, usage and security notes' },
+  },
+];
+
 function App() {
+  const [activePage, setActivePage] = useState<AppPage>('ai-image');
   const [formState, setFormState] = useState<ImageFormState>(() => loadStoredSettings());
   const [history, setHistory] = useState<GenerationHistoryItem[]>([]);
   const [currentImage, setCurrentImage] = useState<GeneratedImage | null>(null);
@@ -47,10 +99,28 @@ function App() {
     error: null,
     updatedAt: null,
   });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [preferences, setPreferences] = useState(() => loadDisplayPreferences());
+  const [favoriteHistoryIds, setFavoriteHistoryIds] = useState<string[]>(() => loadFavoriteHistoryIds());
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [promptReferenceItems, setPromptReferenceItems] = useState<PromptReferenceItem[]>([]);
+  const [promptReferenceSourceLabel, setPromptReferenceSourceLabel] = useState('ZeroLu/awesome-gpt-image');
+  const [promptReferenceLoading, setPromptReferenceLoading] = useState(false);
+  const [promptReferenceError, setPromptReferenceError] = useState<string | null>(null);
+  const [promptReferenceSearch, setPromptReferenceSearch] = useState('');
+  const [promptReferenceCategory, setPromptReferenceCategory] = useState('全部');
 
   useEffect(() => {
     saveStoredSettings(formState);
   }, [formState]);
+
+  useEffect(() => {
+    saveDisplayPreferences(preferences);
+  }, [preferences]);
+
+  useEffect(() => {
+    saveFavoriteHistoryIds(favoriteHistoryIds);
+  }, [favoriteHistoryIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +150,47 @@ function App() {
     }
 
     void refreshUsage();
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = preferences.theme;
+  }, [preferences.theme]);
+
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCopyFeedback(null);
+    }, 2200);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [copyFeedback]);
+
+  useEffect(() => {
+    setPromptReferenceLoading(true);
+    setPromptReferenceError(null);
+
+    void fetchPromptReference()
+      .then((result) => {
+        setPromptReferenceItems(result.items);
+        setPromptReferenceSourceLabel(result.sourceLabel);
+      })
+      .catch((caughtError) => {
+        setPromptReferenceError(
+          isApiErrorState(caughtError)
+            ? caughtError.message
+            : caughtError instanceof Error
+              ? caughtError.message
+              : '提示词参考加载失败。',
+        );
+      })
+      .finally(() => {
+        setPromptReferenceLoading(false);
+      });
   }, []);
 
   function updateField<K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) {
@@ -127,42 +238,6 @@ function App() {
     }));
   }
 
-  function handleClearConfig() {
-    clearStoredSettings();
-    setShowApiKey(false);
-    setFormState(DEFAULT_FORM_STATE);
-    clearUploadState();
-    setUsageState({
-      data: null,
-      isLoading: false,
-      error: null,
-      updatedAt: null,
-    });
-  }
-
-  function handleClearHistory() {
-    void clearHistory();
-    setHistory([]);
-    setCurrentImage(null);
-    setPreviewImage(null);
-  }
-
-  function handleSelectHistory(item: GenerationHistoryItem) {
-    startTransition(() => {
-      setCurrentImage(item);
-      setError(null);
-      clearUploadState();
-      setFormState((current) => ({
-        ...current,
-        prompt: item.prompt,
-        size:
-          item.width > 0 && item.height > 0
-            ? (`${item.width}x${item.height}` as ImageFormState['size'])
-            : current.size,
-      }));
-    });
-  }
-
   function clearUploadState() {
     setUploadState((current) => {
       for (const previewUrl of current.previewUrls) {
@@ -175,6 +250,73 @@ function App() {
         error: null,
       };
     });
+  }
+
+  function resetCreativeFields() {
+    setError(null);
+    clearUploadState();
+    setFormState((current) => ({
+      ...current,
+      prompt: '',
+      negativePrompt: '',
+      stylePreset: DEFAULT_FORM_STATE.stylePreset,
+      outputCount: DEFAULT_FORM_STATE.outputCount,
+      seed: '',
+      sizeMode: DEFAULT_FORM_STATE.sizeMode,
+      size: DEFAULT_FORM_STATE.size,
+      customWidth: DEFAULT_FORM_STATE.customWidth,
+      customHeight: DEFAULT_FORM_STATE.customHeight,
+      quality: DEFAULT_FORM_STATE.quality,
+      generationMode: DEFAULT_FORM_STATE.generationMode,
+    }));
+  }
+
+  function handleClearConfig() {
+    clearStoredSettings();
+    setShowApiKey(false);
+    setFormState(DEFAULT_FORM_STATE);
+    clearUploadState();
+    setUsageState({
+      data: null,
+      isLoading: false,
+      error: null,
+      updatedAt: null,
+    });
+    setPreferences(DEFAULT_DISPLAY_PREFERENCES);
+    setAdvancedOpen(false);
+  }
+
+  function handleClearHistory() {
+    void clearHistory();
+    setHistory([]);
+    setFavoriteHistoryIds([]);
+    setCurrentImage(null);
+    setPreviewImage(null);
+  }
+
+  function handleSelectHistory(item: GenerationHistoryItem) {
+    startTransition(() => {
+      setActivePage('ai-image');
+      setCurrentImage(item);
+      setError(null);
+      clearUploadState();
+      setFormState((current) => ({
+        ...current,
+        prompt: item.prompt,
+        sizeMode: item.width > 0 && item.height > 0 ? 'custom' : current.sizeMode,
+        size: item.width > 0 && item.height > 0 ? `${item.width}x${item.height}` : current.size,
+        customWidth: item.width > 0 ? String(item.width) : current.customWidth,
+        customHeight: item.height > 0 ? String(item.height) : current.customHeight,
+      }));
+    });
+  }
+
+  function handleApplyPrompt(item: PromptReferenceItem) {
+    setActivePage('ai-image');
+    setFormState((current) => ({
+      ...current,
+      prompt: item.content,
+    }));
   }
 
   function handleImageSelect(fileList: FileList | File[] | null) {
@@ -269,9 +411,29 @@ function App() {
     }
   }
 
+  async function runGenerateRequest() {
+    const resolvedSize = getResolvedSize(formState);
+    const payloadData = {
+      baseUrl: normalizeBaseUrl(formState.baseUrl),
+      apiKey: formState.apiKey.trim(),
+      model: formState.model,
+      prompt: formState.prompt.trim(),
+      size: resolvedSize,
+      quality: formState.quality,
+      mode: formState.generationMode,
+    } as const;
+
+    return formState.generationMode === 'reference' && uploadState.files.length > 0
+      ? requestGenerateWithReferenceImages(payloadData, uploadState.files)
+      : formState.generationMode === 'edit' && uploadState.files[0]
+        ? requestGenerateWithEditImage(payloadData, uploadState.files[0])
+        : requestGenerate(payloadData);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setCopyFeedback(null);
 
     const validationMessage = validateForm(formState);
     if (validationMessage) {
@@ -287,21 +449,7 @@ function App() {
     setIsSubmitting(true);
 
     try {
-      const payloadData = {
-        baseUrl: normalizeBaseUrl(formState.baseUrl),
-        apiKey: formState.apiKey.trim(),
-        model: formState.model,
-        prompt: formState.prompt.trim(),
-        size: formState.size,
-        quality: formState.quality,
-        mode: formState.generationMode,
-      } as const;
-      const payload =
-        formState.generationMode === 'reference' && uploadState.files.length > 0
-          ? await requestGenerateWithReferenceImages(payloadData, uploadState.files)
-          : formState.generationMode === 'edit' && uploadState.files[0]
-            ? await requestGenerateWithEditImage(payloadData, uploadState.files[0])
-            : await requestGenerate(payloadData);
+      const payload = await runGenerateRequest();
       const base64 = payload.data?.[0]?.b64_json;
 
       if (!base64) {
@@ -332,66 +480,198 @@ function App() {
     }
   }
 
+  async function handleCopyCurrentImage() {
+    if (!currentImage) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(currentImage.imageDataUrl);
+      setCopyFeedback('已复制当前图片 data URL。');
+    } catch {
+      setCopyFeedback('复制失败，请检查浏览器剪贴板权限。');
+    }
+  }
+
+  function handleToggleFavorite() {
+    if (!currentImage) {
+      return;
+    }
+
+    setFavoriteHistoryIds((current) =>
+      current.includes(currentImage.id)
+        ? current.filter((id) => id !== currentImage.id)
+        : [currentImage.id, ...current],
+    );
+  }
+
+  function handleRegenerate() {
+    const form = document.querySelector<HTMLFormElement>('.config-form');
+    form?.requestSubmit();
+  }
+
+  function toggleLanguage() {
+    setPreferences((current) => ({
+      ...current,
+      language: current.language === 'zh' ? 'en' : 'zh',
+    }));
+  }
+
+  function toggleTheme() {
+    setPreferences((current) => ({
+      ...current,
+      theme: current.theme === 'light' ? 'dark' : 'light',
+    }));
+  }
+
+  const activeNav = NAV_ITEMS.find((item) => item.id === activePage) ?? NAV_ITEMS[0];
+  const language: DisplayLanguage = preferences.language;
+  const theme: ThemeMode = preferences.theme;
+  const promptReferenceCategories = getPromptReferenceCategories(promptReferenceItems);
+  const filteredPromptReferenceItems = filterPromptReferenceItems(
+    promptReferenceItems,
+    promptReferenceCategory,
+    promptReferenceSearch,
+  );
+
   return (
-    <div className="app-shell">
-      <header className="hero">
-        <div className="brand-lockup" aria-label="魔法画布 The Magic Canvas">
-          <img className="brand-mark" src="/branding/magic-canvas-mark.png" alt="魔法画布图标" />
-          <div className="brand-copy">
+    <div className="dashboard-shell">
+      <aside className="sidebar">
+        <div className="brand-block">
+          <img className="brand-logo" src="/branding/magic-canvas-logo.png" alt="魔法画布 Logo" />
+          <div className="brand-text">
             <strong>魔法画布</strong>
-            <span>The Magic Canvas</span>
+            <span>Magic Canvas</span>
           </div>
         </div>
-        <aside className="warning-card">
-          <strong>安全提示</strong>
-          <p>这个页面会把 API Key 保存在浏览器本地存储中，适合个人或受控环境使用，不建议在公共设备上保存。</p>
-        </aside>
-      </header>
 
-      <main className="content-grid">
-        <ConfigForm
-          formState={formState}
-          uploadState={uploadState}
-          isSubmitting={isSubmitting}
-          showApiKey={showApiKey}
-          error={error}
-          onSubmit={handleSubmit}
-          onFieldChange={updateField}
-          onToggleApiKey={() => setShowApiKey((current) => !current)}
-          onClearApiKey={() => updateField('apiKey', '')}
-          onClearConfig={handleClearConfig}
-          onImageSelect={handleImageSelect}
-          onRemoveImage={handleRemoveImage}
-          onClearImages={clearUploadState}
-        />
+        <nav className="sidebar-nav" aria-label="主导航">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={activePage === item.id ? 'sidebar-link is-active' : 'sidebar-link'}
+              type="button"
+              onClick={() => setActivePage(item.id)}
+            >
+              <span className="sidebar-link-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span>{item.title[language]}</span>
+            </button>
+          ))}
+        </nav>
 
-        <div className="side-column">
-          <UsagePanel
-            usageState={usageState}
-            hasCredentials={Boolean(normalizeBaseUrl(formState.baseUrl) && formState.apiKey.trim())}
-            onRefresh={() => {
-              void refreshUsage();
-            }}
-          />
-          <ResultPanel
-            image={currentImage}
-            isSubmitting={isSubmitting}
-            onPreview={(image) => setPreviewImage(image)}
-          />
-          <HistoryPanel history={history} onSelect={handleSelectHistory} onClear={handleClearHistory} />
+        <div className="sidebar-promo">
+          <strong>释放你的想象力</strong>
+          <p>Ai 让创作更简单</p>
         </div>
-      </main>
+
+        <footer className="sidebar-footer">
+          <p>© 2026 Magic Canvas</p>
+          <span>v1.0.0</span>
+        </footer>
+      </aside>
+
+      <div className="dashboard-main">
+        <header className="topbar">
+          <div className="topbar-title">
+            <h1>{activeNav.title[language]}</h1>
+            <p>{activeNav.description[language]}</p>
+          </div>
+
+          <div className="topbar-actions">
+            <button className="lang-switch" type="button" onClick={toggleLanguage}>
+              <span className={language === 'zh' ? 'is-active' : ''}>中文</span>
+              <span className={language === 'en' ? 'is-active' : ''}>EN</span>
+            </button>
+            <button className="icon-button" type="button" onClick={toggleTheme} aria-label="切换主题">
+              {theme === 'light' ? '☾' : '☀'}
+            </button>
+            <button className="user-chip" type="button">
+              <span className="user-avatar">🧙</span>
+              <span>Magic User</span>
+            </button>
+          </div>
+        </header>
+
+        <main className="dashboard-content">
+          {activePage === 'ai-image' ? (
+            <div className="ai-workspace">
+              <ConfigForm
+                formState={formState}
+                uploadState={uploadState}
+                isSubmitting={isSubmitting}
+                error={error}
+                advancedOpen={advancedOpen}
+                onSubmit={handleSubmit}
+                onFieldChange={updateField}
+                onRemoveImage={handleRemoveImage}
+                onImageSelect={handleImageSelect}
+                onClearImages={clearUploadState}
+                onAdvancedToggle={() => setAdvancedOpen((current) => !current)}
+                onResetCreativeFields={resetCreativeFields}
+              />
+
+              <div className="result-column">
+                <ResultPanel
+                  image={currentImage}
+                  isSubmitting={isSubmitting}
+                  isFavorite={Boolean(currentImage && favoriteHistoryIds.includes(currentImage.id))}
+                  copyFeedback={copyFeedback}
+                  history={history}
+                  favoriteIds={favoriteHistoryIds}
+                  onPreview={(image) => setPreviewImage(image)}
+                  onRegenerate={handleRegenerate}
+                  onCopy={() => {
+                    void handleCopyCurrentImage();
+                  }}
+                  onToggleFavorite={handleToggleFavorite}
+                  onSelectHistory={handleSelectHistory}
+                  onClearHistory={handleClearHistory}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {activePage === 'prompt-plaza' ? (
+            <PromptReference
+              items={filteredPromptReferenceItems}
+              categories={promptReferenceCategories}
+              selectedCategory={promptReferenceCategory}
+              searchQuery={promptReferenceSearch}
+              sourceLabel={promptReferenceSourceLabel}
+              isLoading={promptReferenceLoading}
+              error={promptReferenceError}
+              onSearchChange={setPromptReferenceSearch}
+              onCategoryChange={setPromptReferenceCategory}
+              onApply={handleApplyPrompt}
+            />
+          ) : null}
+
+          {activePage === 'settings' ? (
+            <SettingsPanel
+              formState={formState}
+              showApiKey={showApiKey}
+              usageState={usageState}
+              uploadState={uploadState}
+              error={error}
+              onFieldChange={updateField}
+              onToggleApiKey={() => setShowApiKey((current) => !current)}
+              onClearApiKey={() => updateField('apiKey', '')}
+              onClearConfig={handleClearConfig}
+              onRefreshUsage={() => {
+                void refreshUsage();
+              }}
+            />
+          ) : null}
+        </main>
+      </div>
+
       <ImagePreviewModal
         image={previewImage}
         open={previewImage !== null}
         onClose={() => setPreviewImage(null)}
       />
-      <footer className="site-footer">
-        <p>© 2026 魔法画布 (The Magic Canvas)</p>
-        <a href="https://github.com/guohai163/images-gen" target="_blank" rel="noreferrer">
-          github.com/guohai163/images-gen
-        </a>
-      </footer>
     </div>
   );
 }

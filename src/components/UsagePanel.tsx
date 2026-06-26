@@ -15,11 +15,11 @@ export function UsagePanel({ usageState, hasCredentials, onRefresh }: UsagePanel
   const total = usage?.usage?.total;
 
   return (
-    <section className="panel usage-panel">
-      <div className="panel-header">
+    <section className="workspace-panel usage-panel">
+      <div className="section-heading">
         <div>
-          <p className="eyebrow">接口用量</p>
-          <h2>首次打开与生成完成后自动刷新</h2>
+          <h2>接口用量</h2>
+          <p>首次打开与生成完成后自动刷新，也可以手动拉取最新配额。</p>
         </div>
         <button
           className="ghost-button"
