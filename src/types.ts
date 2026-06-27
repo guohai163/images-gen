@@ -6,7 +6,6 @@ export type ImageFormState = {
   negativePrompt: string;
   stylePreset: StylePresetId;
   outputCount: 1 | 2 | 4;
-  seed: string;
   sizeMode: 'preset' | 'custom';
   size: string;
   customWidth: string;
@@ -27,6 +26,10 @@ export type GenerationHistoryItem = {
   id: string;
   createdAt: string;
   prompt: string;
+  stylePreset?: StylePresetId;
+  requestedSize?: string;
+  quality?: ImageFormState['quality'];
+  batchCount?: number;
   width: number;
   height: number;
   imageDataUrl: string;
@@ -51,7 +54,9 @@ export type StylePreset = {
   id: StylePresetId;
   label: string;
   promptHint: string;
+  promptTemplate: string;
   swatch: string;
+  previewImage?: string;
 };
 
 export type PromptReferenceItem = {
@@ -122,7 +127,39 @@ export type GenerateRequestPayload = {
   prompt: string;
   size: string;
   quality: ImageFormState['quality'];
+  n: ImageFormState['outputCount'];
   mode?: 'text' | 'reference' | 'edit';
+};
+
+export type GenerateResponse = {
+  data?: Array<{
+    b64_json?: string;
+    width?: number;
+    height?: number;
+  }>;
+};
+
+export type PromptPolishRequestPayload = {
+  baseUrl: string;
+  apiKey: string;
+  prompt: string;
+  stylePreset: ImageFormState['stylePreset'];
+  generationMode: ImageFormState['generationMode'];
+  size: string;
+  quality: ImageFormState['quality'];
+};
+
+export type PromptPolishResponse = {
+  polishedPrompt: string;
+};
+
+export type ImageToPromptRequestPayload = {
+  baseUrl: string;
+  apiKey: string;
+};
+
+export type ImageToPromptResponse = {
+  prompt: string;
 };
 
 export type UsageRequestPayload = {
@@ -136,7 +173,7 @@ export type UploadState = {
   error: string | null;
 };
 
-export type AppPage = 'ai-image' | 'prompt-plaza' | 'settings';
+export type AppPage = 'ai-image' | 'image-to-prompt' | 'prompt-plaza' | 'settings';
 
 export type DisplayLanguage = 'zh' | 'en';
 

@@ -1,6 +1,7 @@
 import { type FormEvent, startTransition, useEffect, useState } from 'react';
 import { ConfigForm } from './components/ConfigForm';
 import { HistoryPanel } from './components/HistoryPanel';
+import { ImageToPromptPage } from './components/ImageToPromptPage';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { PromptReference } from './components/PromptReference';
 import { ResultPanel } from './components/ResultPanel';
@@ -35,6 +36,7 @@ import type {
   UsageState,
 } from './types';
 import {
+  buildSubmissionPrompt,
   createHistoryItem,
   createImageDataUrl,
   createUploadPreviewStateFromFiles,
@@ -47,8 +49,10 @@ import {
   normalizeBaseUrl,
   parseSizeString,
   requestGenerate,
+  requestImageToPrompt,
   requestGenerateWithEditImage,
   requestGenerateWithReferenceImages,
+  requestPromptPolish,
   validateForm,
   validateUploadFiles,
 } from './utils';
@@ -64,6 +68,12 @@ const NAV_ITEMS: Array<{
     icon: '✦',
     title: { zh: 'Ai生图', en: 'AI Image' },
     description: { zh: '通过 GPT Image 接口生成高质量图片', en: 'Create premium visuals with GPT Image' },
+  },
+  {
+    id: 'image-to-prompt',
+    icon: '◧',
+    title: { zh: '图转提示词', en: 'Image To Prompt' },
+    description: { zh: '上传一张图片，生成适合 GPT Image 的提示词', en: 'Upload one image and derive a GPT Image prompt' },
   },
   {
     id: 'prompt-plaza',
@@ -84,15 +94,27 @@ function App() {
   const [formState, setFormState] = useState<ImageFormState>(() => loadStoredSettings());
   const [history, setHistory] = useState<GenerationHistoryItem[]>([]);
   const [currentImage, setCurrentImage] = useState<GeneratedImage | null>(null);
+  const [currentBatch, setCurrentBatch] = useState<GeneratedImage[]>([]);
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPolishingPrompt, setIsPolishingPrompt] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [error, setError] = useState<ApiErrorState | null>(null);
+  const [polishError, setPolishError] = useState<string | null>(null);
+  const [polishedPromptDraft, setPolishedPromptDraft] = useState<string | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>({
     files: [],
     previewUrls: [],
     error: null,
   });
+  const [imageToPromptUploadState, setImageToPromptUploadState] = useState<UploadState>({
+    files: [],
+    previewUrls: [],
+    error: null,
+  });
+  const [isGeneratingPromptFromImage, setIsGeneratingPromptFromImage] = useState(false);
+  const [imageToPromptError, setImageToPromptError] = useState<string | null>(null);
+  const [generatedPromptFromImageDraft, setGeneratedPromptFromImageDraft] = useState<string | null>(null);
   const [usageState, setUsageState] = useState<UsageState>({
     data: null,
     isLoading: false,
@@ -143,6 +165,14 @@ function App() {
       }
     };
   }, [uploadState.previewUrls]);
+
+  useEffect(() => {
+    return () => {
+      for (const previewUrl of imageToPromptUploadState.previewUrls) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [imageToPromptUploadState.previewUrls]);
 
   useEffect(() => {
     if (!normalizeBaseUrl(formState.baseUrl) || !formState.apiKey.trim()) {
@@ -252,8 +282,24 @@ function App() {
     });
   }
 
+  function clearImageToPromptUploadState() {
+    setImageToPromptUploadState((current) => {
+      for (const previewUrl of current.previewUrls) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      return {
+        files: [],
+        previewUrls: [],
+        error: null,
+      };
+    });
+  }
+
   function resetCreativeFields() {
     setError(null);
+    setPolishError(null);
+    setPolishedPromptDraft(null);
     clearUploadState();
     setFormState((current) => ({
       ...current,
@@ -261,7 +307,6 @@ function App() {
       negativePrompt: '',
       stylePreset: DEFAULT_FORM_STATE.stylePreset,
       outputCount: DEFAULT_FORM_STATE.outputCount,
-      seed: '',
       sizeMode: DEFAULT_FORM_STATE.sizeMode,
       size: DEFAULT_FORM_STATE.size,
       customWidth: DEFAULT_FORM_STATE.customWidth,
@@ -274,6 +319,8 @@ function App() {
   function handleClearConfig() {
     clearStoredSettings();
     setShowApiKey(false);
+    setPolishError(null);
+    setPolishedPromptDraft(null);
     setFormState(DEFAULT_FORM_STATE);
     clearUploadState();
     setUsageState({
@@ -284,6 +331,9 @@ function App() {
     });
     setPreferences(DEFAULT_DISPLAY_PREFERENCES);
     setAdvancedOpen(false);
+    setImageToPromptError(null);
+    setGeneratedPromptFromImageDraft(null);
+    clearImageToPromptUploadState();
   }
 
   function handleClearHistory() {
@@ -291,6 +341,7 @@ function App() {
     setHistory([]);
     setFavoriteHistoryIds([]);
     setCurrentImage(null);
+    setCurrentBatch([]);
     setPreviewImage(null);
   }
 
@@ -298,11 +349,13 @@ function App() {
     startTransition(() => {
       setActivePage('ai-image');
       setCurrentImage(item);
+      setCurrentBatch([item]);
       setError(null);
       clearUploadState();
       setFormState((current) => ({
         ...current,
         prompt: item.prompt,
+        stylePreset: item.stylePreset ?? current.stylePreset,
         sizeMode: item.width > 0 && item.height > 0 ? 'custom' : current.sizeMode,
         size: item.width > 0 && item.height > 0 ? `${item.width}x${item.height}` : current.size,
         customWidth: item.width > 0 ? String(item.width) : current.customWidth,
@@ -313,10 +366,38 @@ function App() {
 
   function handleApplyPrompt(item: PromptReferenceItem) {
     setActivePage('ai-image');
+    setPolishError(null);
+    setPolishedPromptDraft(null);
     setFormState((current) => ({
       ...current,
       prompt: item.content,
     }));
+  }
+
+  function handleImageToPromptImageSelect(fileList: FileList | File[] | null) {
+    const incomingFiles = fileList ? Array.from(fileList).slice(0, 1) : [];
+
+    setImageToPromptUploadState((current) => {
+      if (incomingFiles.length === 0) {
+        return current;
+      }
+
+      const uploadError = validateUploadFiles(incomingFiles, 'edit');
+      if (uploadError) {
+        return {
+          ...current,
+          error: uploadError,
+        };
+      }
+
+      for (const previewUrl of current.previewUrls) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      return createUploadPreviewStateFromFiles(incomingFiles);
+    });
+    setImageToPromptError(null);
+    setGeneratedPromptFromImageDraft(null);
   }
 
   function handleImageSelect(fileList: FileList | File[] | null) {
@@ -367,6 +448,54 @@ function App() {
     });
   }
 
+  async function handleGeneratePromptFromImage() {
+    const imageFile = imageToPromptUploadState.files[0];
+    if (!imageFile) {
+      return;
+    }
+
+    setImageToPromptError(null);
+    setGeneratedPromptFromImageDraft(null);
+    setIsGeneratingPromptFromImage(true);
+
+    try {
+      const result = await requestImageToPrompt({
+        baseUrl: normalizeBaseUrl(formState.baseUrl),
+        apiKey: formState.apiKey.trim(),
+      }, imageFile);
+
+      setGeneratedPromptFromImageDraft(result.prompt);
+    } catch (caughtError) {
+      const nextError = isApiErrorState(caughtError)
+        ? caughtError.message
+        : caughtError instanceof Error
+          ? caughtError.message
+          : '图转提示词失败，请检查当前配置后重试。';
+      setImageToPromptError(nextError);
+    } finally {
+      setIsGeneratingPromptFromImage(false);
+    }
+  }
+
+  function handleApplyGeneratedPromptFromImage() {
+    if (!generatedPromptFromImageDraft) {
+      return;
+    }
+
+    setFormState((current) => ({
+      ...current,
+      prompt: generatedPromptFromImageDraft,
+    }));
+    setGeneratedPromptFromImageDraft(null);
+    setImageToPromptError(null);
+    setActivePage('ai-image');
+  }
+
+  function handleDismissGeneratedPromptFromImage() {
+    setGeneratedPromptFromImageDraft(null);
+    setImageToPromptError(null);
+  }
+
   async function refreshUsage() {
     const baseUrl = normalizeBaseUrl(formState.baseUrl);
     const apiKey = formState.apiKey.trim();
@@ -413,13 +542,15 @@ function App() {
 
   async function runGenerateRequest() {
     const resolvedSize = getResolvedSize(formState);
+    const submittedPrompt = buildSubmissionPrompt(formState);
     const payloadData = {
       baseUrl: normalizeBaseUrl(formState.baseUrl),
       apiKey: formState.apiKey.trim(),
       model: formState.model,
-      prompt: formState.prompt.trim(),
+      prompt: submittedPrompt,
       size: resolvedSize,
       quality: formState.quality,
+      n: formState.outputCount,
       mode: formState.generationMode,
     } as const;
 
@@ -433,6 +564,7 @@ function App() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setPolishError(null);
     setCopyFeedback(null);
 
     const validationMessage = validateForm(formState);
@@ -450,21 +582,32 @@ function App() {
 
     try {
       const payload = await runGenerateRequest();
-      const base64 = payload.data?.[0]?.b64_json;
+      const imageResults = payload.data?.filter((item) => typeof item?.b64_json === 'string') ?? [];
 
-      if (!base64) {
+      if (imageResults.length === 0) {
         setError({
           message: '返回数据不完整，未找到图片内容。',
         });
         return;
       }
 
-      const imageDataUrl = createImageDataUrl(base64);
-      const nextImage = createHistoryItem(formState, imageDataUrl);
-      const nextHistory = [nextImage, ...history].slice(0, HISTORY_LIMIT);
+      const createdAt = new Date();
+      const nextImages = imageResults.map((imageResult) =>
+        createHistoryItem(
+          formState,
+          createImageDataUrl(imageResult.b64_json as string),
+          {
+            width: imageResult?.width,
+            height: imageResult?.height,
+          },
+          createdAt,
+        ),
+      );
+      const nextHistory = [...nextImages, ...history].slice(0, HISTORY_LIMIT);
       const persistedHistory = await saveHistory(nextHistory);
 
-      setCurrentImage(nextImage);
+      setCurrentImage(nextImages[0] ?? null);
+      setCurrentBatch(nextImages);
       setHistory(persistedHistory);
       void refreshUsage();
     } catch (caughtError) {
@@ -478,6 +621,57 @@ function App() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handlePolishPrompt() {
+    if (!formState.prompt.trim()) {
+      return;
+    }
+
+    setPolishError(null);
+    setPolishedPromptDraft(null);
+    setIsPolishingPrompt(true);
+
+    try {
+      const result = await requestPromptPolish({
+        baseUrl: normalizeBaseUrl(formState.baseUrl),
+        apiKey: formState.apiKey.trim(),
+        prompt: formState.prompt.trim(),
+        stylePreset: formState.stylePreset,
+        generationMode: formState.generationMode,
+        size: getResolvedSize(formState),
+        quality: formState.quality,
+      });
+
+      setPolishedPromptDraft(result.polishedPrompt);
+    } catch (caughtError) {
+      const nextError = isApiErrorState(caughtError)
+        ? caughtError.message
+        : caughtError instanceof Error
+          ? caughtError.message
+          : 'AI 润色失败，请检查当前配置后重试。';
+      setPolishError(nextError);
+    } finally {
+      setIsPolishingPrompt(false);
+    }
+  }
+
+  function handleApplyPolishedPrompt() {
+    if (!polishedPromptDraft) {
+      return;
+    }
+
+    setFormState((current) => ({
+      ...current,
+      prompt: polishedPromptDraft,
+    }));
+    setPolishedPromptDraft(null);
+    setPolishError(null);
+  }
+
+  function handleDismissPolishedPrompt() {
+    setPolishedPromptDraft(null);
+    setPolishError(null);
   }
 
   async function handleCopyCurrentImage() {
@@ -601,7 +795,10 @@ function App() {
                 formState={formState}
                 uploadState={uploadState}
                 isSubmitting={isSubmitting}
+                isPolishingPrompt={isPolishingPrompt}
                 error={error}
+                polishError={polishError}
+                polishedPromptDraft={polishedPromptDraft}
                 advancedOpen={advancedOpen}
                 onSubmit={handleSubmit}
                 onFieldChange={updateField}
@@ -609,12 +806,18 @@ function App() {
                 onImageSelect={handleImageSelect}
                 onClearImages={clearUploadState}
                 onAdvancedToggle={() => setAdvancedOpen((current) => !current)}
+                onPolishPrompt={() => {
+                  void handlePolishPrompt();
+                }}
+                onApplyPolishedPrompt={handleApplyPolishedPrompt}
+                onDismissPolishedPrompt={handleDismissPolishedPrompt}
                 onResetCreativeFields={resetCreativeFields}
               />
 
               <div className="result-column">
                 <ResultPanel
                   image={currentImage}
+                  images={currentBatch}
                   isSubmitting={isSubmitting}
                   isFavorite={Boolean(currentImage && favoriteHistoryIds.includes(currentImage.id))}
                   copyFeedback={copyFeedback}
@@ -631,6 +834,23 @@ function App() {
                 />
               </div>
             </div>
+          ) : null}
+
+          {activePage === 'image-to-prompt' ? (
+            <ImageToPromptPage
+              uploadState={imageToPromptUploadState}
+              isGenerating={isGeneratingPromptFromImage}
+              hasCredentials={Boolean(normalizeBaseUrl(formState.baseUrl) && formState.apiKey.trim())}
+              generatedPromptDraft={generatedPromptFromImageDraft}
+              error={imageToPromptError}
+              onImageSelect={handleImageToPromptImageSelect}
+              onClearImage={clearImageToPromptUploadState}
+              onGenerate={() => {
+                void handleGeneratePromptFromImage();
+              }}
+              onApplyPrompt={handleApplyGeneratedPromptFromImage}
+              onDismissPrompt={handleDismissGeneratedPromptFromImage}
+            />
           ) : null}
 
           {activePage === 'prompt-plaza' ? (

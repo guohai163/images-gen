@@ -7,7 +7,10 @@ type ConfigFormProps = {
   formState: ImageFormState;
   uploadState: UploadState;
   isSubmitting: boolean;
+  isPolishingPrompt: boolean;
   error: ApiErrorState | null;
+  polishError: string | null;
+  polishedPromptDraft: string | null;
   advancedOpen: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: <K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) => void;
@@ -15,6 +18,9 @@ type ConfigFormProps = {
   onImageSelect: (files: FileList | File[] | null) => void;
   onClearImages: () => void;
   onAdvancedToggle: () => void;
+  onPolishPrompt: () => void;
+  onApplyPolishedPrompt: () => void;
+  onDismissPolishedPrompt: () => void;
   onResetCreativeFields: () => void;
 };
 
@@ -34,7 +40,10 @@ export function ConfigForm({
   formState,
   uploadState,
   isSubmitting,
+  isPolishingPrompt,
   error,
+  polishError,
+  polishedPromptDraft,
   advancedOpen,
   onSubmit,
   onFieldChange,
@@ -42,11 +51,21 @@ export function ConfigForm({
   onImageSelect,
   onClearImages,
   onAdvancedToggle,
+  onPolishPrompt,
+  onApplyPolishedPrompt,
+  onDismissPolishedPrompt,
   onResetCreativeFields,
 }: ConfigFormProps) {
   const isReferenceMode = formState.generationMode === 'reference';
   const isEditMode = formState.generationMode === 'edit';
   const customSizeHint = getCustomSizeHint(formState.customWidth, formState.customHeight);
+  const canPolishPrompt = Boolean(
+    formState.prompt.trim() &&
+    formState.baseUrl.trim() &&
+    formState.apiKey.trim() &&
+    !isSubmitting &&
+    !isPolishingPrompt,
+  );
 
   return (
     <section className="workspace-panel config-panel control-panel">
@@ -70,9 +89,19 @@ export function ConfigForm({
         <label className="field">
           <div className="field-head">
             <span>提示词</span>
-            <button className="tiny-button mini-button" type="button" onClick={onResetCreativeFields}>
-              ✧ 清空灵感
-            </button>
+            <div className="field-head-actions">
+              <button
+                className="tiny-button mini-button"
+                type="button"
+                onClick={onPolishPrompt}
+                disabled={!canPolishPrompt}
+              >
+                {isPolishingPrompt ? '润色中...' : 'AI辅助'}
+              </button>
+              <button className="tiny-button mini-button" type="button" onClick={onResetCreativeFields}>
+                ✧ 清空灵感
+              </button>
+            </div>
           </div>
           <div className="textarea-wrap">
             <textarea
@@ -84,6 +113,30 @@ export function ConfigForm({
             <span className="counter">{formState.prompt.trim().length}/1000</span>
           </div>
         </label>
+
+        {polishError ? (
+          <div className="feedback feedback-error" role="alert">
+            <strong>AI 辅助失败</strong>
+            <p>{polishError}</p>
+          </div>
+        ) : null}
+
+        {polishedPromptDraft ? (
+          <div className="prompt-polish-card">
+            <div className="field-head">
+              <span>AI 润色建议</span>
+            </div>
+            <p>{polishedPromptDraft}</p>
+            <div className="result-action-row">
+              <button className="action-button primary" type="button" onClick={onApplyPolishedPrompt}>
+                应用到提示词
+              </button>
+              <button className="action-button" type="button" onClick={onDismissPolishedPrompt}>
+                关闭
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <label className="field">
           <div className="field-head">
@@ -113,8 +166,13 @@ export function ConfigForm({
                 type="button"
                 onClick={() => onFieldChange('stylePreset', preset.id)}
               >
-                <span className="style-preset-art style-thumb" style={{ background: preset.swatch }} aria-hidden="true" />
+                <span
+                  className="style-preset-art style-thumb"
+                  style={preset.previewImage ? { backgroundImage: `url(${preset.previewImage})` } : { background: preset.swatch }}
+                  aria-hidden="true"
+                />
                 <strong className="style-name">{preset.label}</strong>
+                <span className="style-caption">{preset.promptHint}</span>
               </button>
             ))}
           </div>
@@ -226,16 +284,6 @@ export function ConfigForm({
               ))}
             </div>
           </div>
-
-          <label className="field">
-            <span>随机种子</span>
-            <input
-              type="text"
-              placeholder="选填"
-              value={formState.seed}
-              onChange={(event) => onFieldChange('seed', event.target.value)}
-            />
-          </label>
         </div>
 
         <div className="field">

@@ -4,6 +4,7 @@ import type { GenerationHistoryItem } from '../types';
 
 type ResultPanelProps = {
   image: GeneratedImage | null;
+  images: GeneratedImage[];
   isSubmitting: boolean;
   isFavorite: boolean;
   copyFeedback: string | null;
@@ -19,6 +20,7 @@ type ResultPanelProps = {
 
 export function ResultPanel({
   image,
+  images,
   isSubmitting,
   isFavorite,
   copyFeedback,
@@ -44,18 +46,23 @@ export function ResultPanel({
 
       {image ? (
         <div className="result-content">
-          <button
-            className="result-image-button"
-            type="button"
-            onClick={() => onPreview(image)}
-            aria-label="点击预览大图"
-          >
-            <img
-              className="result-image"
-              src={image.imageDataUrl}
-              alt={image.prompt || '生成图片预览'}
-            />
-          </button>
+          <div className={images.length > 1 ? 'result-gallery result-gallery-multi' : 'result-gallery'}>
+            {images.map((item, index) => (
+              <button
+                key={item.id}
+                className={item.id === image.id ? 'result-image-button is-active' : 'result-image-button'}
+                type="button"
+                onClick={() => onPreview(item)}
+                aria-label={`点击预览第 ${index + 1} 张图片`}
+              >
+                <img
+                  className="result-image"
+                  src={item.imageDataUrl}
+                  alt={item.prompt || '生成图片预览'}
+                />
+              </button>
+            ))}
+          </div>
 
           <div className="result-action-row preview-actions">
             <a className="action-button primary" href={image.imageDataUrl} download={image.filename}>
@@ -80,12 +87,22 @@ export function ResultPanel({
             <div className="info-tile">
               <span>图片尺寸</span>
               <strong>
-                {image.width > 0 && image.height > 0 ? `${image.width} x ${image.height}` : '自动尺寸'}
+                {image.width > 0 && image.height > 0
+                  ? `${image.width} x ${image.height}`
+                  : image.requestedSize || '未知尺寸'}
               </strong>
             </div>
             <div className="info-tile">
               <span>生成时间</span>
               <strong>{new Date(image.createdAt).toLocaleString()}</strong>
+            </div>
+            <div className="info-tile">
+              <span>生成数量</span>
+              <strong>{image.batchCount ?? images.length}</strong>
+            </div>
+            <div className="info-tile">
+              <span>生成质量</span>
+              <strong>{image.quality ?? 'unknown'}</strong>
             </div>
           </div>
 

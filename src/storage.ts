@@ -11,7 +11,6 @@ type StoredSettings = Pick<
   | 'negativePrompt'
   | 'stylePreset'
   | 'outputCount'
-  | 'seed'
   | 'sizeMode'
   | 'size'
   | 'customWidth'
@@ -47,7 +46,6 @@ export function loadStoredSettings(): ImageFormState {
           ? parsed.stylePreset
           : DEFAULT_FORM_STATE.stylePreset,
       outputCount: parsed.outputCount === 2 || parsed.outputCount === 4 ? parsed.outputCount : DEFAULT_FORM_STATE.outputCount,
-      seed: typeof parsed.seed === 'string' ? parsed.seed : '',
       sizeMode: parsed.sizeMode === 'custom' ? 'custom' : DEFAULT_FORM_STATE.sizeMode,
       size: typeof parsed.size === 'string' && parsed.size.trim() ? parsed.size : DEFAULT_FORM_STATE.size,
       customWidth: typeof parsed.customWidth === 'string' && parsed.customWidth.trim() ? parsed.customWidth : DEFAULT_FORM_STATE.customWidth,
@@ -81,7 +79,6 @@ export function saveStoredSettings(formState: ImageFormState): void {
     negativePrompt: formState.negativePrompt,
     stylePreset: formState.stylePreset,
     outputCount: formState.outputCount,
-    seed: formState.seed,
     sizeMode: formState.sizeMode,
     size: formState.size,
     customWidth: formState.customWidth,

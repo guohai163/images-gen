@@ -39,7 +39,7 @@ export function HistoryPanel({ history, favoriteIds, onSelect, onClear }: Histor
               <div className="history-card-body">
                 <strong className="history-title">{item.prompt}</strong>
                 <p className="history-meta">
-                  {item.width > 0 && item.height > 0 ? `${item.width} x ${item.height}` : '自动尺寸'}
+                  {item.width > 0 && item.height > 0 ? `${item.width} x ${item.height}` : '未知尺寸'}
                   {' · '}
                   {new Date(item.createdAt).toLocaleString()}
                 </p>

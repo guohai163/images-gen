@@ -1,17 +1,39 @@
 import type {
   ApiErrorState,
   GenerateRequestPayload,
+  GenerateResponse,
   GeneratedImage,
+  ImageToPromptRequestPayload,
+  ImageToPromptResponse,
   ImageFormState,
+  PromptPolishRequestPayload,
+  PromptPolishResponse,
   PromptReferenceItem,
   PromptReferenceResponse,
   UploadState,
   UsageRequestPayload,
   UsageResponse,
 } from './types';
-import { ACCEPTED_IMAGE_TYPES, CUSTOM_SIZE_LIMITS, MAX_UPLOAD_SIZE_BYTES } from './constants';
+import { ACCEPTED_IMAGE_TYPES, CUSTOM_SIZE_LIMITS, MAX_UPLOAD_SIZE_BYTES, STYLE_PRESETS } from './constants';
 
 const MAX_REFERENCE_IMAGE_COUNT = 4;
+
+export function buildSubmissionPrompt(formState: Pick<ImageFormState, 'prompt' | 'negativePrompt' | 'stylePreset'>): string {
+  const prompt = formState.prompt.trim();
+  const negativePrompt = formState.negativePrompt.trim();
+  const styleTemplate = STYLE_PRESETS.find((preset) => preset.id === formState.stylePreset)?.promptTemplate ?? '';
+  const sections = [prompt];
+
+  if (styleTemplate) {
+    sections.push(`风格要求：${styleTemplate}`);
+  }
+
+  if (negativePrompt) {
+    sections.push(`请避免出现以下内容：${negativePrompt}`);
+  }
+
+  return sections.join('\n\n');
+}
 
 export function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim();
@@ -189,16 +211,20 @@ export function createDownloadFilename(date = new Date()): string {
 export function createHistoryItem(
   formState: ImageFormState,
   imageDataUrl: string,
+  dimensions?: { width?: number; height?: number },
   createdAt = new Date(),
 ): GeneratedImage {
-  const resolvedSize = getResolvedSize(formState);
-  const parsedSize = parseSizeString(resolvedSize);
-  const [width, height] = parsedSize ? [parsedSize.width, parsedSize.height] : [0, 0];
+  const width = typeof dimensions?.width === 'number' && dimensions.width > 0 ? dimensions.width : 0;
+  const height = typeof dimensions?.height === 'number' && dimensions.height > 0 ? dimensions.height : 0;
 
   return {
     id: `${createdAt.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: createdAt.toISOString(),
     prompt: formState.prompt.trim(),
+    stylePreset: formState.stylePreset,
+    requestedSize: getResolvedSize(formState),
+    quality: formState.quality,
+    batchCount: formState.outputCount,
     width,
     height,
     imageDataUrl,
@@ -237,7 +263,7 @@ function getString(value: unknown): string | undefined {
 
 export async function requestGenerate(
   payload: GenerateRequestPayload,
-): Promise<{ data?: Array<{ b64_json?: string }> }> {
+): Promise<GenerateResponse> {
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: {
@@ -250,13 +276,13 @@ export async function requestGenerate(
     throw await parseError(response);
   }
 
-  return (await response.json()) as { data?: Array<{ b64_json?: string }> };
+  return (await response.json()) as GenerateResponse;
 }
 
 export async function requestGenerateWithReferenceImages(
   payload: GenerateRequestPayload,
   files: File[],
-): Promise<{ data?: Array<{ b64_json?: string }> }> {
+): Promise<GenerateResponse> {
   const formData = new FormData();
   formData.append('baseUrl', payload.baseUrl);
   formData.append('apiKey', payload.apiKey);
@@ -264,6 +290,7 @@ export async function requestGenerateWithReferenceImages(
   formData.append('prompt', payload.prompt);
   formData.append('size', payload.size);
   formData.append('quality', payload.quality);
+  formData.append('n', String(payload.n));
   formData.append('mode', payload.mode ?? 'reference');
 
   for (const file of files) {
@@ -279,13 +306,13 @@ export async function requestGenerateWithReferenceImages(
     throw await parseError(response);
   }
 
-  return (await response.json()) as { data?: Array<{ b64_json?: string }> };
+  return (await response.json()) as GenerateResponse;
 }
 
 export async function requestGenerateWithEditImage(
   payload: GenerateRequestPayload,
   file: File,
-): Promise<{ data?: Array<{ b64_json?: string }> }> {
+): Promise<GenerateResponse> {
   const formData = new FormData();
   formData.append('baseUrl', payload.baseUrl);
   formData.append('apiKey', payload.apiKey);
@@ -293,6 +320,7 @@ export async function requestGenerateWithEditImage(
   formData.append('prompt', payload.prompt);
   formData.append('size', payload.size);
   formData.append('quality', payload.quality);
+  formData.append('n', String(payload.n));
   formData.append('mode', payload.mode ?? 'reference');
   formData.append('image', file);
 
@@ -305,7 +333,46 @@ export async function requestGenerateWithEditImage(
     throw await parseError(response);
   }
 
-  return (await response.json()) as { data?: Array<{ b64_json?: string }> };
+  return (await response.json()) as GenerateResponse;
+}
+
+export async function requestPromptPolish(
+  payload: PromptPolishRequestPayload,
+): Promise<PromptPolishResponse> {
+  const response = await fetch('/api/prompt-polish', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return (await response.json()) as PromptPolishResponse;
+}
+
+export async function requestImageToPrompt(
+  payload: ImageToPromptRequestPayload,
+  file: File,
+): Promise<ImageToPromptResponse> {
+  const formData = new FormData();
+  formData.append('baseUrl', payload.baseUrl);
+  formData.append('apiKey', payload.apiKey);
+  formData.append('image', file);
+
+  const response = await fetch('/api/image-to-prompt', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return (await response.json()) as ImageToPromptResponse;
 }
 
 export async function fetchUsage(payload: UsageRequestPayload): Promise<UsageResponse> {
