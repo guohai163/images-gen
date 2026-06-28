@@ -55,27 +55,27 @@ npm run preview
 构建镜像：
 
 ```bash
-docker build -t image-gen-console .
+docker build -t ghcr.io/guohai163/magic-canvas:latest .
 ```
 
 运行容器：
 
 ```bash
-docker run --rm -p 3000:3000 image-gen-console
+docker run --rm -p 3000:3000 ghcr.io/guohai163/magic-canvas:latest
 ```
 
 自定义端口：
 
 ```bash
-docker run --rm -e PORT=8080 -p 8080:8080 image-gen-console
+docker run --rm -e PORT=8080 -p 8080:8080 ghcr.io/guohai163/magic-canvas:latest
 ```
 
 ## Docker Compose
 
-仓库中已提供示例文件 [docker-compose.yml](/Users/guohai/Develop/github-project/image-gen/docker-compose.yml)，默认直接使用 GitHub Actions 推送到 GHCR 的镜像：
+仓库中已提供示例文件 [docker-compose.yml](/Users/guohai/Develop/github/images-gen/docker-compose.yml)，默认直接使用 GitHub Actions 推送到 GHCR 的镜像：
 
 ```yaml
-ghcr.io/guohai163/images-gen:latest
+ghcr.io/guohai163/magic-canvas:latest
 ```
 
 启动方式：

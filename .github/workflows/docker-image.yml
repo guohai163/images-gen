@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/guohai163/images-gen
+  IMAGE_NAME: ghcr.io/guohai163/magic-canvas
 
 jobs:
   docker:
@@ -37,6 +39,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=ref,event=tag
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
