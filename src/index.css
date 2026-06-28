@@ -1054,8 +1054,15 @@ html[data-theme='dark'] .history-card {
 .history-item {
   min-width: 0;
   border: none;
-  background: transparent;
+  background: rgba(252, 252, 255, 0.92);
   box-shadow: none;
+}
+
+.history-card-main {
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
 }
 
 .history-thumb {
@@ -1063,6 +1070,15 @@ html[data-theme='dark'] .history-card {
   border-radius: 13px;
   overflow: hidden;
   border: 1px solid rgba(154, 138, 255, 0.14);
+}
+
+.history-card-actions {
+  padding: 0 0 14px;
+}
+
+.history-action-button {
+  width: 100%;
+  justify-content: center;
 }
 
 .history-title {

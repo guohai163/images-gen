@@ -429,6 +429,19 @@ export function createUploadPreviewStateFromFiles(files: File[]): UploadState {
   };
 }
 
+export async function createFileFromDataUrl(
+  dataUrl: string,
+  filename: string,
+): Promise<File> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+
+  return new File([blob], filename, {
+    type: blob.type || 'image/png',
+    lastModified: Date.now(),
+  });
+}
+
 export function filterPromptReferenceItems(
   items: PromptReferenceItem[],
   selectedCategory: string,

@@ -4,10 +4,11 @@ type HistoryPanelProps = {
   history: GenerationHistoryItem[];
   favoriteIds: string[];
   onSelect: (item: GenerationHistoryItem) => void;
+  onEditImage: (item: GenerationHistoryItem) => void;
   onClear: () => void;
 };
 
-export function HistoryPanel({ history, favoriteIds, onSelect, onClear }: HistoryPanelProps) {
+export function HistoryPanel({ history, favoriteIds, onSelect, onEditImage, onClear }: HistoryPanelProps) {
   return (
     <section className="history-panel embedded-history-panel">
       <div className="history-head">
@@ -26,12 +27,12 @@ export function HistoryPanel({ history, favoriteIds, onSelect, onClear }: Histor
       ) : (
         <div className="history-strip history-grid">
           {history.map((item) => (
-            <button
-              key={item.id}
-              className="history-card history-item"
-              type="button"
-              onClick={() => onSelect(item)}
-            >
+            <article key={item.id} className="history-card history-item">
+              <button
+                className="history-card-main"
+                type="button"
+                onClick={() => onSelect(item)}
+              >
               <div className="history-thumb-wrap history-thumb">
                 <img src={item.imageDataUrl} alt={item.prompt} />
                 {favoriteIds.includes(item.id) ? <span className="favorite-badge">收藏</span> : null}
@@ -44,7 +45,13 @@ export function HistoryPanel({ history, favoriteIds, onSelect, onClear }: Histor
                   {new Date(item.createdAt).toLocaleString()}
                 </p>
               </div>
-            </button>
+              </button>
+              <div className="history-card-actions">
+                <button className="ghost-button history-action-button" type="button" onClick={() => onEditImage(item)}>
+                  继续编辑
+                </button>
+              </div>
+            </article>
           ))}
         </div>
       )}

@@ -39,6 +39,7 @@ import {
   buildSubmissionPrompt,
   createHistoryItem,
   createImageDataUrl,
+  createFileFromDataUrl,
   createUploadPreviewStateFromFiles,
   fetchPromptReference,
   fetchUsage,
@@ -362,6 +363,47 @@ function App() {
         customHeight: item.height > 0 ? String(item.height) : current.customHeight,
       }));
     });
+  }
+
+  async function handleReuseImageForEdit(item: GeneratedImage) {
+    try {
+      const nextFile = await createFileFromDataUrl(
+        item.imageDataUrl,
+        item.filename || `edit-source-${item.id}.png`,
+      );
+
+      setError(null);
+      setPolishError(null);
+      setPolishedPromptDraft(null);
+      setPreviewImage(null);
+      setCurrentImage(item);
+      setCurrentBatch([item]);
+      setActivePage('ai-image');
+      setFormState((current) => ({
+        ...current,
+        generationMode: 'edit',
+        prompt: item.prompt || current.prompt,
+        stylePreset: item.stylePreset ?? current.stylePreset,
+        sizeMode: item.width > 0 && item.height > 0 ? 'custom' : current.sizeMode,
+        size: item.width > 0 && item.height > 0 ? `${item.width}x${item.height}` : current.size,
+        customWidth: item.width > 0 ? String(item.width) : current.customWidth,
+        customHeight: item.height > 0 ? String(item.height) : current.customHeight,
+      }));
+      setUploadState((current) => {
+        for (const previewUrl of current.previewUrls) {
+          URL.revokeObjectURL(previewUrl);
+        }
+
+        return createUploadPreviewStateFromFiles([nextFile]);
+      });
+    } catch (caughtError) {
+      setError({
+        message:
+          caughtError instanceof Error
+            ? `载入待编辑图片失败：${caughtError.message}`
+            : '载入待编辑图片失败，请重试。',
+      });
+    }
   }
 
   function handleApplyPrompt(item: PromptReferenceItem) {
@@ -828,8 +870,14 @@ function App() {
                   onCopy={() => {
                     void handleCopyCurrentImage();
                   }}
+                  onEditImage={(image) => {
+                    void handleReuseImageForEdit(image);
+                  }}
                   onToggleFavorite={handleToggleFavorite}
                   onSelectHistory={handleSelectHistory}
+                  onEditHistoryImage={(image) => {
+                    void handleReuseImageForEdit(image);
+                  }}
                   onClearHistory={handleClearHistory}
                 />
               </div>

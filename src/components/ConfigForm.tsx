@@ -272,7 +272,7 @@ export function ConfigForm({
           <div className="field">
             <span>生成质量</span>
             <div className="inline-option-group quality-options">
-              {QUALITY_OPTIONS.filter((option) => option.value === 'medium' || option.value === 'high').map((option) => (
+              {QUALITY_OPTIONS.map((option) => (
                 <button
                   key={option.value}
                   className={formState.quality === option.value ? 'option-pill small-option is-active' : 'option-pill small-option'}

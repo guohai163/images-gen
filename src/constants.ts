@@ -35,6 +35,8 @@ export const SIZE_PRESETS: SizePreset[] = [
   { label: '3:2', ratioLabel: '横版', value: '1536x1024' },
   { label: '2:3', ratioLabel: '竖版', value: '1024x1536' },
   { label: '16:9', ratioLabel: '宽屏', value: '1920x1088' },
+  { label: '2K', ratioLabel: '宽屏', value: '2048x1152' },
+  { label: '4K', ratioLabel: '超清', value: '3840x2160' },
   { label: '9:16', ratioLabel: '手机竖图', value: '1088x1920' },
 ];
 
@@ -52,9 +54,9 @@ export const QUALITY_OPTIONS: Array<{
   value: ImageFormState['quality'];
 }> = [
   { label: '自动', value: 'auto' },
+  { label: '快速', value: 'low' },
   { label: '标准', value: 'medium' },
   { label: '高清', value: 'high' },
-  { label: '快速', value: 'low' },
 ];
 
 export const HISTORY_LIMIT = 10;

@@ -13,8 +13,10 @@ type ResultPanelProps = {
   onPreview: (image: GeneratedImage) => void;
   onRegenerate: () => void;
   onCopy: () => void;
+  onEditImage: (image: GeneratedImage) => void;
   onToggleFavorite: () => void;
   onSelectHistory: (item: GenerationHistoryItem) => void;
+  onEditHistoryImage: (item: GenerationHistoryItem) => void;
   onClearHistory: () => void;
 };
 
@@ -29,8 +31,10 @@ export function ResultPanel({
   onPreview,
   onRegenerate,
   onCopy,
+  onEditImage,
   onToggleFavorite,
   onSelectHistory,
+  onEditHistoryImage,
   onClearHistory,
 }: ResultPanelProps) {
   return (
@@ -68,6 +72,9 @@ export function ResultPanel({
             <a className="action-button primary" href={image.imageDataUrl} download={image.filename}>
               下载图片
             </a>
+            <button className="action-button" type="button" onClick={() => onEditImage(image)}>
+              继续编辑
+            </button>
             <button className="action-button" type="button" onClick={onCopy}>
               复制链接
             </button>
@@ -125,6 +132,7 @@ export function ResultPanel({
         history={history}
         favoriteIds={favoriteIds}
         onSelect={onSelectHistory}
+        onEditImage={onEditHistoryImage}
         onClear={onClearHistory}
       />
     </section>
