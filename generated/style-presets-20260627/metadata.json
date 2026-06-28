@@ -1,0 +1,38 @@
+[
+  {
+    "id": "none",
+    "label": "无风格",
+    "prompt": "为风格预设卡片生成一张高辨识度缩略图：一只抱着发光星球的小狐狸吉祥物，居中构图，主体完整，背景简洁干净，适合作为产品里的风格预设预览图。",
+    "filePath": "/Users/guohai/Develop/github/images-gen/generated/style-presets-20260627/none.png"
+  },
+  {
+    "id": "realistic",
+    "label": "写实",
+    "prompt": "为风格预设卡片生成一张高辨识度缩略图：一只抱着发光星球的小狐狸吉祥物，居中构图，主体完整，背景简洁干净，适合作为产品里的风格预设预览图。\n\n风格要求：在不改变主体和场景核心设定的前提下，采用写实摄影风格，强调真实光影、自然色彩、准确透视、细腻材质与电影感构图，整体效果逼真且具有高质量照片质感，避免卡通化与插画感。",
+    "filePath": "/Users/guohai/Develop/github/images-gen/generated/style-presets-20260627/realistic.png"
+  },
+  {
+    "id": "illustration",
+    "label": "插画",
+    "prompt": "为风格预设卡片生成一张高辨识度缩略图：一只抱着发光星球的小狐狸吉祥物，居中构图，主体完整，背景简洁干净，适合作为产品里的风格预设预览图。\n\n风格要求：在不改变主体和场景核心设定的前提下，采用高质量数字插画风格，强化叙事氛围、柔和笔触、清晰层次与富有设计感的配色，让画面更具故事性和艺术表现力。",
+    "filePath": "/Users/guohai/Develop/github/images-gen/generated/style-presets-20260627/illustration.png"
+  },
+  {
+    "id": "anime",
+    "label": "动漫",
+    "prompt": "为风格预设卡片生成一张高辨识度缩略图：一只抱着发光星球的小狐狸吉祥物，居中构图，主体完整，背景简洁干净，适合作为产品里的风格预设预览图。\n\n风格要求：在不改变主体和场景核心设定的前提下，采用高质量日系动漫风格，突出清晰轮廓、鲜明色彩、干净光影、富有情绪张力的镜头语言，并呈现动画电影海报般的完成度。",
+    "filePath": "/Users/guohai/Develop/github/images-gen/generated/style-presets-20260627/anime.png"
+  },
+  {
+    "id": "three-d",
+    "label": "3D渲染",
+    "prompt": "为风格预设卡片生成一张高辨识度缩略图：一只抱着发光星球的小狐狸吉祥物，居中构图，主体完整，背景简洁干净，适合作为产品里的风格预设预览图。\n\n风格要求：在不改变主体和场景核心设定的前提下，采用电影级 3D 渲染风格，突出体积光、真实材质、空间景深、干净边缘和高精度建模质感，使画面看起来像高品质 CG 场景。",
+    "filePath": "/Users/guohai/Develop/github/images-gen/generated/style-presets-20260627/three-d.png"
+  },
+  {
+    "id": "cyberpunk",
+    "label": "赛博朋克",
+    "prompt": "为风格预设卡片生成一张高辨识度缩略图：一只抱着发光星球的小狐狸吉祥物，居中构图，主体完整，背景简洁干净，适合作为产品里的风格预设预览图。\n\n风格要求：在不改变主体和场景核心设定的前提下，采用赛博朋克风格，加入霓虹灯光、未来科技氛围、强烈冷暖对比、潮湿反光表面和高密度都市视觉语言，让画面更具未来感与冲击力。",
+    "filePath": "/Users/guohai/Develop/github/images-gen/generated/style-presets-20260627/cyberpunk.png"
+  }
+]
