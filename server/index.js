@@ -12,6 +12,8 @@ const indexFile = path.join(distDir, 'index.html');
 const IMAGE_PATH = '/v1/images/generations';
 const EDIT_PATH = '/v1/images/edits';
 const GEMINI_IMAGE_PATH = '/v1beta/interactions';
+const GEMINI_GENERATE_CONTENT_PATH_PREFIX = '/v1beta/models/';
+const GEMINI_GENERATE_CONTENT_PATH_SUFFIX = ':generateContent';
 const GEMINI_NATIVE_FALLBACK_STATUSES = new Set([404, 405]);
 const RESPONSES_PATH = '/v1/responses';
 const USAGE_PATH = '/v1/usage';
@@ -65,7 +67,7 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
   }
 
   const upstreamPath = model === 'gemini-3.1-flash-image'
-    ? GEMINI_IMAGE_PATH
+    ? getGeminiPrimaryPath(baseUrl, model)
     : mode === 'text'
       ? IMAGE_PATH
       : EDIT_PATH;
@@ -89,13 +91,14 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
         aspectRatio,
         imageSize,
         uploadedImages,
+        requestFormat: isGoogleGeminiBaseUrl(baseUrl) ? 'interactions' : 'generateContent',
       });
 
       if (
         shouldFallbackGeminiNativeRequest(upstreamResponse, baseUrl) &&
         mode === 'text'
       ) {
-        const fallbackUrl = buildUpstreamUrl(baseUrl, IMAGE_PATH);
+        const fallbackUrl = buildUpstreamUrl(baseUrl, getGeminiGenerateContentPath(model));
         if (!fallbackUrl) {
           res.status(400).json({
             error: {
@@ -105,16 +108,18 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
           return;
         }
 
-        const fallbackResponse = await fetchOpenAiCompatibleImageGeneration({
+        const fallbackResponse = await fetchGeminiImage({
           upstreamUrl: fallbackUrl,
           apiKey,
           model,
           prompt,
-          size,
-          quality,
+          aspectRatio,
+          imageSize,
+          uploadedImages,
+          requestFormat: 'generateContent',
         });
 
-        await proxyResponse(fallbackResponse, res);
+        await proxyGeminiImageResponse(fallbackResponse, res);
         return;
       }
 
@@ -406,6 +411,16 @@ function buildUpstreamUrl(baseUrl, pathName) {
   }
 }
 
+function getGeminiPrimaryPath(baseUrl, model) {
+  return isGoogleGeminiBaseUrl(baseUrl)
+    ? GEMINI_IMAGE_PATH
+    : getGeminiGenerateContentPath(model);
+}
+
+function getGeminiGenerateContentPath(model) {
+  return `${GEMINI_GENERATE_CONTENT_PATH_PREFIX}${encodeURIComponent(model)}${GEMINI_GENERATE_CONTENT_PATH_SUFFIX}`;
+}
+
 function shouldFallbackGeminiNativeRequest(upstreamResponse, baseUrl) {
   return (
     GEMINI_NATIVE_FALLBACK_STATUSES.has(upstreamResponse.status) &&
@@ -660,6 +675,7 @@ async function fetchGeminiImage({
   aspectRatio,
   imageSize,
   uploadedImages,
+  requestFormat,
 }) {
   return fetch(upstreamUrl, {
     method: 'POST',
@@ -673,6 +689,7 @@ async function fetchGeminiImage({
       aspectRatio,
       imageSize,
       uploadedImages,
+      requestFormat,
     })),
   });
 }
@@ -683,7 +700,17 @@ function buildGeminiImageRequestBody({
   aspectRatio,
   imageSize,
   uploadedImages,
+  requestFormat,
 }) {
+  if (requestFormat === 'generateContent') {
+    return buildGeminiGenerateContentRequestBody({
+      prompt,
+      aspectRatio,
+      imageSize,
+      uploadedImages,
+    });
+  }
+
   const input = [
     {
       type: 'text',
@@ -704,6 +731,39 @@ function buildGeminiImageRequestBody({
       mime_type: 'image/png',
       aspect_ratio: aspectRatio,
       image_size: imageSize,
+    },
+  };
+}
+
+function buildGeminiGenerateContentRequestBody({
+  prompt,
+  aspectRatio,
+  imageSize,
+  uploadedImages,
+}) {
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: prompt.trim(),
+          },
+          ...uploadedImages.map((uploadedImage) => ({
+            inlineData: {
+              mimeType: uploadedImage.mimetype,
+              data: uploadedImage.buffer.toString('base64'),
+            },
+          })),
+        ],
+      },
+    ],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      imageConfig: {
+        aspectRatio,
+        imageSize,
+      },
     },
   };
 }
@@ -777,6 +837,10 @@ function collectGeminiImageBase64(value, images) {
   }
 
   if (typeof value.data === 'string' && typeof value.mime_type === 'string' && value.mime_type.startsWith('image/')) {
+    images.push(stripDataUrlPrefix(value.data));
+  }
+
+  if (typeof value.data === 'string' && typeof value.mimeType === 'string' && value.mimeType.startsWith('image/')) {
     images.push(stripDataUrlPrefix(value.data));
   }
 

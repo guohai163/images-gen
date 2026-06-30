@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.3 - 2026-07-01
+
+### Fixed
+- 修复 Gemini 图片生成通过 sub2api 中转时报 “Images API is not supported for this platform” 的问题，非 Google 官方域名改走 `/v1beta/models/{model}:generateContent` 并使用 Gemini `contents`/`generationConfig.imageConfig` 请求格式。
+
 ## v1.2.2 - 2026-07-01
 
 ### Changed
