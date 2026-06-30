@@ -1,4 +1,11 @@
-import type { DisplayPreferences, ImageFormState, SizePreset, StylePreset } from './types';
+import type {
+  AspectRatioPreset,
+  DisplayPreferences,
+  ImageFormState,
+  ImageSizeOption,
+  StylePreset,
+  SupportedModel,
+} from './types';
 
 export const STORAGE_KEYS = {
   settings: 'image-gen:settings',
@@ -14,15 +21,25 @@ export const INDEXED_DB = {
   historyKey: 'history',
 } as const;
 
+export const SUPPORTED_MODELS: SupportedModel[] = [
+  'gemini-3.1-flash-image',
+  'gpt-image-2',
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+];
+
 export const DEFAULT_FORM_STATE: ImageFormState = {
   baseUrl: '',
   apiKey: '',
   model: 'gpt-image-2',
+  apiProviders: [],
   prompt: '',
   negativePrompt: '',
   stylePreset: 'none',
-  outputCount: 1,
   sizeMode: 'preset',
+  aspectRatio: '3:2',
+  imageSize: '1K',
   size: '1536x1024',
   customWidth: '1920',
   customHeight: '1024',
@@ -30,14 +47,18 @@ export const DEFAULT_FORM_STATE: ImageFormState = {
   generationMode: 'text',
 };
 
-export const SIZE_PRESETS: SizePreset[] = [
-  { label: '1:1', ratioLabel: '方图', value: '1024x1024' },
-  { label: '3:2', ratioLabel: '横版', value: '1536x1024' },
-  { label: '2:3', ratioLabel: '竖版', value: '1024x1536' },
-  { label: '16:9', ratioLabel: '宽屏', value: '1920x1088' },
-  { label: '2K', ratioLabel: '宽屏', value: '2048x1152' },
-  { label: '4K', ratioLabel: '超清', value: '3840x2160' },
-  { label: '9:16', ratioLabel: '手机竖图', value: '1088x1920' },
+export const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
+  { label: '1:1', ratioLabel: '方图', value: '1:1' },
+  { label: '3:2', ratioLabel: '横版', value: '3:2' },
+  { label: '2:3', ratioLabel: '竖版', value: '2:3' },
+  { label: '16:9', ratioLabel: '宽屏', value: '16:9' },
+  { label: '9:16', ratioLabel: '手机竖图', value: '9:16' },
+];
+
+export const IMAGE_SIZE_OPTIONS: ImageSizeOption[] = [
+  { label: '1K', value: '1K', description: '标准' },
+  { label: '2K', value: '2K', description: '高清' },
+  { label: '4K', value: '4K', description: '超清' },
 ];
 
 export const CUSTOM_SIZE_LIMITS = {

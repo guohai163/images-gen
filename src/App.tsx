@@ -1,6 +1,5 @@
 import { type FormEvent, startTransition, useEffect, useState } from 'react';
 import { ConfigForm } from './components/ConfigForm';
-import { HistoryPanel } from './components/HistoryPanel';
 import { ImageToPromptPage } from './components/ImageToPromptPage';
 import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { PromptReference } from './components/PromptReference';
@@ -10,6 +9,7 @@ import {
   DEFAULT_DISPLAY_PREFERENCES,
   DEFAULT_FORM_STATE,
   HISTORY_LIMIT,
+  SUPPORTED_MODELS,
 } from './constants';
 import {
   clearHistory,
@@ -25,12 +25,14 @@ import {
 } from './storage';
 import type {
   ApiErrorState,
+  ApiProviderConfig,
   AppPage,
   DisplayLanguage,
   GeneratedImage,
   GenerationHistoryItem,
   ImageFormState,
   PromptReferenceItem,
+  SupportedModel,
   ThemeMode,
   UploadState,
   UsageState,
@@ -43,20 +45,24 @@ import {
   createUploadPreviewStateFromFiles,
   fetchPromptReference,
   fetchUsage,
+  findApiProviderForModel,
   filterPromptReferenceItems,
   getResolvedSize,
   getPromptReferenceCategories,
   isApiErrorState,
-  normalizeBaseUrl,
-  parseSizeString,
   requestGenerate,
   requestImageToPrompt,
   requestGenerateWithEditImage,
   requestGenerateWithReferenceImages,
   requestPromptPolish,
+  resolveApiConfigForModel,
+  resolveApiConfigForPreferredModels,
   validateForm,
   validateUploadFiles,
 } from './utils';
+
+const PROMPT_POLISH_MODELS: SupportedModel[] = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.5'];
+const IMAGE_TO_PROMPT_MODELS: SupportedModel[] = ['gpt-5.4', 'gpt-5.5'];
 
 const NAV_ITEMS: Array<{
   id: AppPage;
@@ -176,7 +182,8 @@ function App() {
   }, [imageToPromptUploadState.previewUrls]);
 
   useEffect(() => {
-    if (!normalizeBaseUrl(formState.baseUrl) || !formState.apiKey.trim()) {
+    const generateConfig = resolveApiConfigForModel(formState, formState.model);
+    if (!generateConfig.baseUrl || !generateConfig.apiKey) {
       return;
     }
 
@@ -224,6 +231,24 @@ function App() {
       });
   }, []);
 
+  function syncCurrentApiFields(
+    current: ImageFormState,
+    providers: ApiProviderConfig[],
+    model: SupportedModel,
+  ): Pick<ImageFormState, 'baseUrl' | 'apiKey' | 'model' | 'apiProviders'> {
+    const selectedProvider = findApiProviderForModel(providers, model);
+    const fallbackModel = providers.flatMap((provider) => provider.supportedModels)[0] ?? model;
+    const nextModel = selectedProvider ? model : fallbackModel;
+    const nextProvider = findApiProviderForModel(providers, nextModel);
+
+    return {
+      apiProviders: providers,
+      model: nextModel,
+      baseUrl: nextProvider?.baseUrl ?? (providers.length > 0 ? '' : current.baseUrl),
+      apiKey: nextProvider?.apiKey ?? (providers.length > 0 ? '' : current.apiKey),
+    };
+  }
+
   function updateField<K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) {
     if (field === 'generationMode') {
       setUploadState((current) => {
@@ -263,10 +288,60 @@ function App() {
       });
     }
 
+    if (field === 'model') {
+      setFormState((current) => ({
+        ...current,
+        ...syncCurrentApiFields(
+          current,
+          current.apiProviders,
+          value as ImageFormState['model'],
+        ),
+      }));
+      return;
+    }
+
+    if (field === 'apiProviders') {
+      setFormState((current) => ({
+        ...current,
+        ...syncCurrentApiFields(
+          current,
+          value as ApiProviderConfig[],
+          current.model,
+        ),
+      }));
+      return;
+    }
+
     setFormState((current) => ({
       ...current,
       [field]: value,
     }));
+  }
+
+  function clearActiveApiKey() {
+    setFormState((current) => {
+      const selectedProvider = findApiProviderForModel(current.apiProviders, current.model);
+      if (!selectedProvider) {
+        return {
+          ...current,
+          apiKey: '',
+        };
+      }
+
+      const nextProviders = current.apiProviders.map((provider) =>
+        provider.id === selectedProvider.id
+          ? {
+              ...provider,
+              apiKey: '',
+            }
+          : provider,
+      );
+
+      return {
+        ...current,
+        ...syncCurrentApiFields(current, nextProviders, current.model),
+      };
+    });
   }
 
   function clearUploadState() {
@@ -307,8 +382,9 @@ function App() {
       prompt: '',
       negativePrompt: '',
       stylePreset: DEFAULT_FORM_STATE.stylePreset,
-      outputCount: DEFAULT_FORM_STATE.outputCount,
       sizeMode: DEFAULT_FORM_STATE.sizeMode,
+      aspectRatio: DEFAULT_FORM_STATE.aspectRatio,
+      imageSize: DEFAULT_FORM_STATE.imageSize,
       size: DEFAULT_FORM_STATE.size,
       customWidth: DEFAULT_FORM_STATE.customWidth,
       customHeight: DEFAULT_FORM_STATE.customHeight,
@@ -501,9 +577,12 @@ function App() {
     setIsGeneratingPromptFromImage(true);
 
     try {
+      const imageToPromptConfig = resolveApiConfigForPreferredModels(formState, IMAGE_TO_PROMPT_MODELS);
       const result = await requestImageToPrompt({
-        baseUrl: normalizeBaseUrl(formState.baseUrl),
-        apiKey: formState.apiKey.trim(),
+        baseUrl: imageToPromptConfig.baseUrl,
+        apiKey: imageToPromptConfig.apiKey,
+        model: imageToPromptConfig.model,
+        targetModel: formState.model,
       }, imageFile);
 
       setGeneratedPromptFromImageDraft(result.prompt);
@@ -539,8 +618,9 @@ function App() {
   }
 
   async function refreshUsage() {
-    const baseUrl = normalizeBaseUrl(formState.baseUrl);
-    const apiKey = formState.apiKey.trim();
+    const generateConfig = resolveApiConfigForModel(formState, formState.model);
+    const baseUrl = generateConfig.baseUrl;
+    const apiKey = generateConfig.apiKey;
 
     if (!baseUrl || !apiKey) {
       setUsageState({
@@ -585,14 +665,16 @@ function App() {
   async function runGenerateRequest() {
     const resolvedSize = getResolvedSize(formState);
     const submittedPrompt = buildSubmissionPrompt(formState);
+    const generateConfig = resolveApiConfigForModel(formState, formState.model);
     const payloadData = {
-      baseUrl: normalizeBaseUrl(formState.baseUrl),
-      apiKey: formState.apiKey.trim(),
-      model: formState.model,
+      baseUrl: generateConfig.baseUrl,
+      apiKey: generateConfig.apiKey,
+      model: generateConfig.model,
       prompt: submittedPrompt,
       size: resolvedSize,
+      aspectRatio: formState.aspectRatio,
+      imageSize: formState.imageSize,
       quality: formState.quality,
-      n: formState.outputCount,
       mode: formState.generationMode,
     } as const;
 
@@ -675,9 +757,11 @@ function App() {
     setIsPolishingPrompt(true);
 
     try {
+      const promptPolishConfig = resolveApiConfigForPreferredModels(formState, PROMPT_POLISH_MODELS);
       const result = await requestPromptPolish({
-        baseUrl: normalizeBaseUrl(formState.baseUrl),
-        apiKey: formState.apiKey.trim(),
+        baseUrl: promptPolishConfig.baseUrl,
+        apiKey: promptPolishConfig.apiKey,
+        model: promptPolishConfig.model,
         prompt: formState.prompt.trim(),
         stylePreset: formState.stylePreset,
         generationMode: formState.generationMode,
@@ -769,6 +853,14 @@ function App() {
     promptReferenceCategory,
     promptReferenceSearch,
   );
+  const configuredModels = SUPPORTED_MODELS.filter((model) =>
+    formState.apiProviders.some((provider) => provider.supportedModels.includes(model)),
+  );
+  const promptPolishConfig = resolveApiConfigForPreferredModels(formState, PROMPT_POLISH_MODELS);
+  const imageToPromptConfig = resolveApiConfigForPreferredModels(formState, IMAGE_TO_PROMPT_MODELS);
+  const generateConfig = resolveApiConfigForModel(formState, formState.model);
+  const hasPromptPolishCredentials = Boolean(promptPolishConfig.baseUrl && promptPolishConfig.apiKey);
+  const hasImageToPromptCredentials = Boolean(imageToPromptConfig.baseUrl && imageToPromptConfig.apiKey);
 
   return (
     <div className="dashboard-shell">
@@ -842,6 +934,8 @@ function App() {
                 polishError={polishError}
                 polishedPromptDraft={polishedPromptDraft}
                 advancedOpen={advancedOpen}
+                configuredModels={configuredModels}
+                canUsePromptPolish={hasPromptPolishCredentials}
                 onSubmit={handleSubmit}
                 onFieldChange={updateField}
                 onRemoveImage={handleRemoveImage}
@@ -888,7 +982,8 @@ function App() {
             <ImageToPromptPage
               uploadState={imageToPromptUploadState}
               isGenerating={isGeneratingPromptFromImage}
-              hasCredentials={Boolean(normalizeBaseUrl(formState.baseUrl) && formState.apiKey.trim())}
+              hasCredentials={hasImageToPromptCredentials}
+              targetModel={formState.model}
               generatedPromptDraft={generatedPromptFromImageDraft}
               error={imageToPromptError}
               onImageSelect={handleImageToPromptImageSelect}
@@ -925,7 +1020,7 @@ function App() {
               error={error}
               onFieldChange={updateField}
               onToggleApiKey={() => setShowApiKey((current) => !current)}
-              onClearApiKey={() => updateField('apiKey', '')}
+              onClearApiKey={clearActiveApiKey}
               onClearConfig={handleClearConfig}
               onRefreshUsage={() => {
                 void refreshUsage();

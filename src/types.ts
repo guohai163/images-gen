@@ -1,12 +1,33 @@
+export type SupportedModel =
+  | 'gemini-3.1-flash-image'
+  | 'gpt-image-2'
+  | 'gpt-5.5'
+  | 'gpt-5.4'
+  | 'gpt-5.4-mini';
+
+export type ApiProviderConfig = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  supportedModels: SupportedModel[];
+};
+
+export type AspectRatio = '1:1' | '3:2' | '2:3' | '16:9' | '9:16';
+
+export type ImageSizePreset = '1K' | '2K' | '4K';
+
 export type ImageFormState = {
   baseUrl: string;
   apiKey: string;
-  model: 'gpt-image-2';
+  model: SupportedModel;
+  apiProviders: ApiProviderConfig[];
   prompt: string;
   negativePrompt: string;
   stylePreset: StylePresetId;
-  outputCount: 1 | 2 | 4;
   sizeMode: 'preset' | 'custom';
+  aspectRatio: AspectRatio;
+  imageSize: ImageSizePreset;
   size: string;
   customWidth: string;
   customHeight: string;
@@ -29,7 +50,6 @@ export type GenerationHistoryItem = {
   stylePreset?: StylePresetId;
   requestedSize?: string;
   quality?: ImageFormState['quality'];
-  batchCount?: number;
   width: number;
   height: number;
   imageDataUrl: string;
@@ -44,10 +64,16 @@ export type ApiErrorState = {
 
 export type GeneratedImage = GenerationHistoryItem;
 
-export type SizePreset = {
-  label: string;
-  value: string;
+export type AspectRatioPreset = {
+  label: AspectRatio;
+  value: AspectRatio;
   ratioLabel: string;
+};
+
+export type ImageSizeOption = {
+  label: ImageSizePreset;
+  value: ImageSizePreset;
+  description: string;
 };
 
 export type StylePreset = {
@@ -123,11 +149,12 @@ export type UsageState = {
 export type GenerateRequestPayload = {
   baseUrl: string;
   apiKey: string;
-  model: 'gpt-image-2';
+  model: SupportedModel;
   prompt: string;
   size: string;
+  aspectRatio: AspectRatio;
+  imageSize: ImageSizePreset;
   quality: ImageFormState['quality'];
-  n: ImageFormState['outputCount'];
   mode?: 'text' | 'reference' | 'edit';
 };
 
@@ -142,6 +169,7 @@ export type GenerateResponse = {
 export type PromptPolishRequestPayload = {
   baseUrl: string;
   apiKey: string;
+  model: SupportedModel;
   prompt: string;
   stylePreset: ImageFormState['stylePreset'];
   generationMode: ImageFormState['generationMode'];
@@ -156,6 +184,8 @@ export type PromptPolishResponse = {
 export type ImageToPromptRequestPayload = {
   baseUrl: string;
   apiKey: string;
+  model: SupportedModel;
+  targetModel: SupportedModel;
 };
 
 export type ImageToPromptResponse = {

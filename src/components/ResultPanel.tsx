@@ -104,10 +104,6 @@ export function ResultPanel({
               <strong>{new Date(image.createdAt).toLocaleString()}</strong>
             </div>
             <div className="info-tile">
-              <span>生成数量</span>
-              <strong>{image.batchCount ?? images.length}</strong>
-            </div>
-            <div className="info-tile">
               <span>生成质量</span>
               <strong>{image.quality ?? 'unknown'}</strong>
             </div>

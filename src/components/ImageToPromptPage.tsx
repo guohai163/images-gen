@@ -1,10 +1,11 @@
 import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from '../constants';
-import type { ApiErrorState, UploadState } from '../types';
+import type { ApiErrorState, SupportedModel, UploadState } from '../types';
 
 type ImageToPromptPageProps = {
   uploadState: UploadState;
   isGenerating: boolean;
   hasCredentials: boolean;
+  targetModel: SupportedModel;
   generatedPromptDraft: string | null;
   error: string | null;
   onImageSelect: (files: FileList | File[] | null) => void;
@@ -18,6 +19,7 @@ export function ImageToPromptPage({
   uploadState,
   isGenerating,
   hasCredentials,
+  targetModel,
   generatedPromptDraft,
   error,
   onImageSelect,
@@ -35,7 +37,7 @@ export function ImageToPromptPage({
       <div className="section-heading">
         <div>
           <h2>图转提示词</h2>
-          <p>上传一张图片，交给 `gpt-5.4` 分析并生成一段适合 `gpt-image-2` 使用的提示词。</p>
+          <p>上传一张图片，系统会使用设置页中支持识图模型的接口，生成适合 `{targetModel}` 使用的提示词。</p>
         </div>
       </div>
 

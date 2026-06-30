@@ -11,6 +11,7 @@ const distDir = path.resolve(__dirname, '../dist');
 const indexFile = path.join(distDir, 'index.html');
 const IMAGE_PATH = '/v1/images/generations';
 const EDIT_PATH = '/v1/images/edits';
+const GEMINI_IMAGE_PATH = '/v1beta/interactions';
 const RESPONSES_PATH = '/v1/responses';
 const USAGE_PATH = '/v1/usage';
 const PROMPT_REFERENCE_URL = 'https://raw.githubusercontent.com/ZeroLu/awesome-gpt-image/main/README.zh-CN.md';
@@ -24,6 +25,13 @@ const IMAGE_MIN_SHORT_EDGE = 256;
 const IMAGE_MIN_PIXELS = 655_360;
 const IMAGE_MAX_PIXELS = 8_294_400;
 const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const SUPPORTED_MODELS = new Set([
+  'gemini-3.1-flash-image',
+  'gpt-image-2',
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+]);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -34,13 +42,13 @@ const upload = multer({
 app.use(express.json({ limit: '2mb' }));
 
 app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), async (req, res) => {
-  const { baseUrl, apiKey, model, prompt, size, quality, n } = req.body ?? {};
+  const { baseUrl, apiKey, model, prompt, size, aspectRatio, imageSize, quality } = req.body ?? {};
   const mode = req.body?.mode ?? 'text';
   const uploadedImages = req.files ?? [];
 
   const validationError =
     validateBaseFields(baseUrl, apiKey) ||
-    validateGenerateFields(model, prompt, size, quality, n, mode, uploadedImages);
+    validateGenerateFields(model, prompt, size, aspectRatio, imageSize, quality, mode, uploadedImages);
 
   if (validationError) {
     res.status(400).json({
@@ -51,7 +59,11 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
     return;
   }
 
-  const upstreamPath = mode === 'text' ? IMAGE_PATH : EDIT_PATH;
+  const upstreamPath = model === 'gemini-3.1-flash-image'
+    ? GEMINI_IMAGE_PATH
+    : mode === 'text'
+      ? IMAGE_PATH
+      : EDIT_PATH;
   const upstreamUrl = buildUpstreamUrl(baseUrl, upstreamPath);
   if (!upstreamUrl) {
     res.status(400).json({
@@ -63,6 +75,21 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
   }
 
   try {
+    if (model === 'gemini-3.1-flash-image') {
+      const upstreamResponse = await fetchGeminiImage({
+        upstreamUrl,
+        apiKey,
+        model,
+        prompt,
+        aspectRatio,
+        imageSize,
+        uploadedImages,
+      });
+
+      await proxyGeminiImageResponse(upstreamResponse, res);
+      return;
+    }
+
     const upstreamResponse = mode === 'text'
       ? await fetch(upstreamUrl, {
           method: 'POST',
@@ -75,7 +102,7 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
             prompt: prompt.trim(),
             size,
             quality,
-            n: Number(n),
+            n: 1,
           }),
         })
       : await fetchWithImageEdit({
@@ -85,7 +112,6 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
           prompt,
           size,
           quality,
-          n,
           uploadedImages,
         });
 
@@ -142,9 +168,10 @@ app.post('/api/usage', async (req, res) => {
 });
 
 app.post('/api/prompt-polish', async (req, res) => {
-  const { baseUrl, apiKey, prompt, stylePreset, generationMode, size, quality } = req.body ?? {};
+  const { baseUrl, apiKey, model, prompt, stylePreset, generationMode, size, quality } = req.body ?? {};
   const validationError =
     validateBaseFields(baseUrl, apiKey) ||
+    validateModelField(model) ||
     validatePromptPolishFields(prompt, stylePreset, generationMode, size, quality);
 
   if (validationError) {
@@ -174,6 +201,7 @@ app.post('/api/prompt-polish', async (req, res) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(buildPromptPolishRequestBody({
+        model,
         prompt,
         stylePreset,
         generationMode,
@@ -212,10 +240,12 @@ app.post('/api/prompt-polish', async (req, res) => {
 });
 
 app.post('/api/image-to-prompt', upload.single('image'), async (req, res) => {
-  const { baseUrl, apiKey } = req.body ?? {};
+  const { baseUrl, apiKey, model, targetModel } = req.body ?? {};
   const uploadedImage = req.file;
   const validationError =
     validateBaseFields(baseUrl, apiKey) ||
+    validateModelField(model) ||
+    validateModelField(targetModel) ||
     validateImageToPromptFields(uploadedImage);
 
   if (validationError) {
@@ -244,7 +274,7 @@ app.post('/api/image-to-prompt', upload.single('image'), async (req, res) => {
         Authorization: `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildImageToPromptRequestBody(uploadedImage)),
+      body: JSON.stringify(buildImageToPromptRequestBody(uploadedImage, model, targetModel)),
     });
 
     const payload = await upstreamResponse.json();
@@ -362,9 +392,10 @@ function validateBaseFields(baseUrl, apiKey) {
   return null;
 }
 
-function validateGenerateFields(model, prompt, size, quality, n, mode, uploadedImages) {
-  if (model !== 'gpt-image-2') {
-    return '当前仅支持 gpt-image-2 模型。';
+function validateGenerateFields(model, prompt, size, aspectRatio, imageSize, quality, mode, uploadedImages) {
+  const modelValidationError = validateModelField(model);
+  if (modelValidationError) {
+    return modelValidationError;
   }
 
   if (typeof prompt !== 'string' || !prompt.trim()) {
@@ -376,18 +407,25 @@ function validateGenerateFields(model, prompt, size, quality, n, mode, uploadedI
     return '图片品质无效，请选择 low、medium、high 或 auto。';
   }
 
+  const acceptedAspectRatios = new Set(['1:1', '3:2', '2:3', '16:9', '9:16']);
+  if (!acceptedAspectRatios.has(aspectRatio)) {
+    return '图片比例无效，请选择 1:1、3:2、2:3、16:9 或 9:16。';
+  }
+
+  const acceptedImageSizes = new Set(['1K', '2K', '4K']);
+  if (!acceptedImageSizes.has(imageSize)) {
+    return '生成尺寸无效，请选择 1K、2K 或 4K。';
+  }
+
   if (typeof size !== 'string' || !size.trim()) {
     return '图片尺寸无效，请填写合法的 WIDTHxHEIGHT。';
   }
 
-  const sizeValidationError = validateGptImage2Size(size);
-  if (sizeValidationError) {
-    return sizeValidationError;
-  }
-
-  const batchCount = Number(n);
-  if (!Number.isInteger(batchCount) || ![1, 2, 4].includes(batchCount)) {
-    return '生成数量无效，请选择 1、2 或 4。';
+  if (model !== 'gemini-3.1-flash-image') {
+    const sizeValidationError = validateGptImage2Size(size);
+    if (sizeValidationError) {
+      return sizeValidationError;
+    }
   }
 
   const acceptedModes = new Set(['text', 'reference', 'edit']);
@@ -411,6 +449,14 @@ function validateGenerateFields(model, prompt, size, quality, n, mode, uploadedI
     if (!ACCEPTED_IMAGE_TYPES.has(uploadedImage.mimetype)) {
       return '仅支持 PNG、JPEG、WEBP 或 GIF 图片文件。';
     }
+  }
+
+  return null;
+}
+
+function validateModelField(model) {
+  if (typeof model !== 'string' || !SUPPORTED_MODELS.has(model)) {
+    return `模型无效，请选择：${Array.from(SUPPORTED_MODELS).join('、')}。`;
   }
 
   return null;
@@ -501,7 +547,6 @@ async function fetchWithImageEdit({
   prompt,
   size,
   quality,
-  n,
   uploadedImages,
 }) {
   const formData = new FormData();
@@ -509,7 +554,7 @@ async function fetchWithImageEdit({
   formData.append('prompt', prompt.trim());
   formData.append('size', size);
   formData.append('quality', quality);
-  formData.append('n', String(Number(n)));
+  formData.append('n', '1');
 
   for (const uploadedImage of uploadedImages) {
     formData.append(
@@ -528,6 +573,62 @@ async function fetchWithImageEdit({
   });
 }
 
+async function fetchGeminiImage({
+  upstreamUrl,
+  apiKey,
+  model,
+  prompt,
+  aspectRatio,
+  imageSize,
+  uploadedImages,
+}) {
+  return fetch(upstreamUrl, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey.trim(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildGeminiImageRequestBody({
+      model,
+      prompt,
+      aspectRatio,
+      imageSize,
+      uploadedImages,
+    })),
+  });
+}
+
+function buildGeminiImageRequestBody({
+  model,
+  prompt,
+  aspectRatio,
+  imageSize,
+  uploadedImages,
+}) {
+  const input = [
+    {
+      type: 'text',
+      text: prompt.trim(),
+    },
+    ...uploadedImages.map((uploadedImage) => ({
+      type: 'image',
+      mime_type: uploadedImage.mimetype,
+      data: uploadedImage.buffer.toString('base64'),
+    })),
+  ];
+
+  return {
+    model,
+    input,
+    response_format: {
+      type: 'image',
+      mime_type: 'image/png',
+      aspect_ratio: aspectRatio,
+      image_size: imageSize,
+    },
+  };
+}
+
 async function proxyResponse(upstreamResponse, res) {
   const contentType = upstreamResponse.headers.get('content-type') ?? '';
   res.status(upstreamResponse.status);
@@ -543,6 +644,84 @@ async function proxyResponse(upstreamResponse, res) {
   }
 
   res.send(await upstreamResponse.text());
+}
+
+async function proxyGeminiImageResponse(upstreamResponse, res) {
+  const contentType = upstreamResponse.headers.get('content-type') ?? '';
+  const isJson = contentType.includes('application/json');
+
+  const payload = isJson
+    ? await upstreamResponse.json()
+    : { error: { message: await upstreamResponse.text() } };
+
+  if (!upstreamResponse.ok) {
+    res.status(upstreamResponse.status).json(payload);
+    return;
+  }
+
+  if (!isJson) {
+    res.status(502).json({
+      error: {
+        message: 'Gemini 图片接口返回了非 JSON 响应。',
+        details: payload.error?.message,
+      },
+    });
+    return;
+  }
+
+  const images = extractGeminiImageBase64(payload);
+  if (images.length === 0) {
+    res.status(502).json({
+      error: {
+        message: 'Gemini 图片接口返回成功，但未解析到图片内容。',
+      },
+    });
+    return;
+  }
+
+  res.json(attachImageDimensions({
+    data: images.map((b64Json) => ({
+      b64_json: b64Json,
+    })),
+  }));
+}
+
+function extractGeminiImageBase64(payload) {
+  const images = [];
+  collectGeminiImageBase64(payload, images);
+  return images;
+}
+
+function collectGeminiImageBase64(value, images) {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+
+  if (typeof value.data === 'string' && typeof value.mime_type === 'string' && value.mime_type.startsWith('image/')) {
+    images.push(stripDataUrlPrefix(value.data));
+  }
+
+  if (typeof value.image_url === 'string' && value.image_url.startsWith('data:image/')) {
+    images.push(stripDataUrlPrefix(value.image_url));
+  }
+
+  if (typeof value.b64_json === 'string') {
+    images.push(stripDataUrlPrefix(value.b64_json));
+  }
+
+  for (const child of Object.values(value)) {
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        collectGeminiImageBase64(item, images);
+      }
+    } else if (child && typeof child === 'object') {
+      collectGeminiImageBase64(child, images);
+    }
+  }
+}
+
+function stripDataUrlPrefix(value) {
+  return value.replace(/^data:image\/[^;]+;base64,/i, '');
 }
 
 function attachImageDimensions(payload) {
@@ -680,6 +859,7 @@ function getWebpDimensions(buffer) {
 }
 
 function buildPromptPolishRequestBody({
+  model,
   prompt,
   stylePreset,
   generationMode,
@@ -687,7 +867,7 @@ function buildPromptPolishRequestBody({
   quality,
 }) {
   return {
-    model: 'gpt-5.4-mini',
+    model,
     input: [
       {
         role: 'developer',
@@ -728,9 +908,9 @@ function buildPromptPolishRequestBody({
   };
 }
 
-function buildImageToPromptRequestBody(uploadedImage) {
+function buildImageToPromptRequestBody(uploadedImage, model, targetModel) {
   return {
-    model: 'gpt-5.4',
+    model,
     input: [
       {
         role: 'developer',
@@ -739,7 +919,7 @@ function buildImageToPromptRequestBody(uploadedImage) {
             type: 'input_text',
             text: [
               '你是一位专业的生图提示词专家。',
-              '你的任务是观察输入图片，并生成一段适合 gpt-image-2 使用的高质量提示词。',
+              `你的任务是观察输入图片，并生成一段适合 ${targetModel} 使用的高质量提示词。`,
               '输出必须是单段、可直接用于图片生成的主提示词正文。',
               '不要输出解释、标题、列表、JSON、分段标签。',
               '不要生成负面提示词。',
@@ -754,7 +934,7 @@ function buildImageToPromptRequestBody(uploadedImage) {
         content: [
           {
             type: 'input_text',
-            text: '请根据这张图，生成一段能让 gpt-image-2 复现相近画面的中文提示词。结果应贴近画面主体、构图、光影、风格与细节。',
+            text: `请根据这张图，生成一段能让 ${targetModel} 复现相近画面的中文提示词。结果应贴近画面主体、构图、光影、风格与细节。`,
           },
           {
             type: 'input_image',

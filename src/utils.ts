@@ -1,8 +1,11 @@
 import type {
   ApiErrorState,
+  ApiProviderConfig,
+  AspectRatio,
   GenerateRequestPayload,
   GenerateResponse,
   GeneratedImage,
+  ImageSizePreset,
   ImageToPromptRequestPayload,
   ImageToPromptResponse,
   ImageFormState,
@@ -10,11 +13,12 @@ import type {
   PromptPolishResponse,
   PromptReferenceItem,
   PromptReferenceResponse,
+  SupportedModel,
   UploadState,
   UsageRequestPayload,
   UsageResponse,
 } from './types';
-import { ACCEPTED_IMAGE_TYPES, CUSTOM_SIZE_LIMITS, MAX_UPLOAD_SIZE_BYTES, STYLE_PRESETS } from './constants';
+import { ACCEPTED_IMAGE_TYPES, CUSTOM_SIZE_LIMITS, MAX_UPLOAD_SIZE_BYTES, STYLE_PRESETS, SUPPORTED_MODELS } from './constants';
 
 const MAX_REFERENCE_IMAGE_COUNT = 4;
 
@@ -45,17 +49,87 @@ export function normalizeBaseUrl(input: string): string {
   return withProtocol.replace(/\/+$/, '');
 }
 
-export function validateForm(formState: ImageFormState): string | null {
-  if (!normalizeBaseUrl(formState.baseUrl)) {
-    return '请输入带中转站的接口域名。';
+export function isSupportedModel(value: unknown): value is SupportedModel {
+  return typeof value === 'string' && SUPPORTED_MODELS.includes(value as SupportedModel);
+}
+
+export function hasProviderCredentials(provider: ApiProviderConfig | undefined): provider is ApiProviderConfig {
+  return Boolean(provider && normalizeBaseUrl(provider.baseUrl) && provider.apiKey.trim());
+}
+
+export function findApiProviderForModel(
+  providers: ApiProviderConfig[],
+  model: SupportedModel,
+): ApiProviderConfig | undefined {
+  const supportingProviders = providers.filter((provider) => provider.supportedModels.includes(model));
+  return supportingProviders.find(hasProviderCredentials) ?? supportingProviders[0];
+}
+
+export function resolveApiConfigForModel(
+  formState: ImageFormState,
+  model: SupportedModel,
+): { provider: ApiProviderConfig | undefined; baseUrl: string; apiKey: string; model: SupportedModel } {
+  const provider = findApiProviderForModel(formState.apiProviders, model);
+
+  return {
+    provider,
+    baseUrl: normalizeBaseUrl(provider?.baseUrl ?? formState.baseUrl),
+    apiKey: (provider?.apiKey ?? formState.apiKey).trim(),
+    model,
+  };
+}
+
+export function resolveApiConfigForPreferredModels(
+  formState: ImageFormState,
+  preferredModels: SupportedModel[],
+): { provider: ApiProviderConfig | undefined; baseUrl: string; apiKey: string; model: SupportedModel } {
+  for (const model of preferredModels) {
+    const resolved = resolveApiConfigForModel(formState, model);
+    if (hasProviderCredentials(resolved.provider) || (formState.apiProviders.length === 0 && resolved.baseUrl && resolved.apiKey)) {
+      return resolved;
+    }
   }
 
-  if (!formState.apiKey.trim()) {
-    return '请先填写 API Key。';
+  const fallbackModel = preferredModels[0] ?? formState.model;
+  return {
+    provider: undefined,
+    baseUrl: '',
+    apiKey: '',
+    model: fallbackModel,
+  };
+}
+
+export function validateForm(formState: ImageFormState): string | null {
+  if (!isSupportedModel(formState.model)) {
+    return '请选择受支持的模型。';
+  }
+
+  const activeProvider = findApiProviderForModel(formState.apiProviders, formState.model);
+  if (formState.apiProviders.length > 0 && !activeProvider) {
+    return `当前模型 ${formState.model} 未绑定接口，请先在设置页勾选支持的模型。`;
+  }
+
+  const activeBaseUrl = activeProvider?.baseUrl ?? formState.baseUrl;
+  const activeApiKey = activeProvider?.apiKey ?? formState.apiKey;
+
+  if (!normalizeBaseUrl(activeBaseUrl)) {
+    return `请为当前模型 ${formState.model} 填写接口域名。`;
+  }
+
+  if (!activeApiKey.trim()) {
+    return `请为当前模型 ${formState.model} 填写 API Key。`;
   }
 
   if (!formState.prompt.trim()) {
     return '请填写提示词后再生成图片。';
+  }
+
+  if (!isValidAspectRatio(formState.aspectRatio)) {
+    return '请选择受支持的图片比例。';
+  }
+
+  if (!isValidImageSizePreset(formState.imageSize)) {
+    return '请选择受支持的生成尺寸。';
   }
 
   if (formState.sizeMode === 'custom') {
@@ -63,8 +137,6 @@ export function validateForm(formState: ImageFormState): string | null {
     if (customSizeValidation) {
       return customSizeValidation;
     }
-  } else if (!isValidSizeString(formState.size)) {
-    return '请选择受支持的图片尺寸。';
   }
 
   const validQualities = new Set(['low', 'medium', 'high', 'auto']);
@@ -73,6 +145,14 @@ export function validateForm(formState: ImageFormState): string | null {
   }
 
   return null;
+}
+
+export function isValidAspectRatio(value: string): value is AspectRatio {
+  return ['1:1', '3:2', '2:3', '16:9', '9:16'].includes(value);
+}
+
+export function isValidImageSizePreset(value: string): value is ImageSizePreset {
+  return ['1K', '2K', '4K'].includes(value);
 }
 
 export function isValidSizeString(value: string): boolean {
@@ -138,7 +218,35 @@ export function validateCustomSize(widthValue: string, heightValue: string): str
 export function getResolvedSize(formState: ImageFormState): string {
   return formState.sizeMode === 'custom'
     ? normalizeSizeString(formState.customWidth, formState.customHeight)
-    : formState.size;
+    : getSizeForAspectRatio(formState.aspectRatio, formState.imageSize);
+}
+
+export function getSizeForAspectRatio(aspectRatio: AspectRatio, imageSize: ImageSizePreset): string {
+  const sizeMap: Record<ImageSizePreset, Record<AspectRatio, string>> = {
+    '1K': {
+      '1:1': '1024x1024',
+      '3:2': '1536x1024',
+      '2:3': '1024x1536',
+      '16:9': '1920x1088',
+      '9:16': '1088x1920',
+    },
+    '2K': {
+      '1:1': '2048x2048',
+      '3:2': '2048x1360',
+      '2:3': '1360x2048',
+      '16:9': '2048x1152',
+      '9:16': '1152x2048',
+    },
+    '4K': {
+      '1:1': '2880x2880',
+      '3:2': '3456x2304',
+      '2:3': '2304x3456',
+      '16:9': '3840x2160',
+      '9:16': '2160x3840',
+    },
+  };
+
+  return sizeMap[imageSize][aspectRatio];
 }
 
 export function getCustomSizeHint(widthValue: string, heightValue: string): string {
@@ -224,7 +332,6 @@ export function createHistoryItem(
     stylePreset: formState.stylePreset,
     requestedSize: getResolvedSize(formState),
     quality: formState.quality,
-    batchCount: formState.outputCount,
     width,
     height,
     imageDataUrl,
@@ -289,8 +396,9 @@ export async function requestGenerateWithReferenceImages(
   formData.append('model', payload.model);
   formData.append('prompt', payload.prompt);
   formData.append('size', payload.size);
+  formData.append('aspectRatio', payload.aspectRatio);
+  formData.append('imageSize', payload.imageSize);
   formData.append('quality', payload.quality);
-  formData.append('n', String(payload.n));
   formData.append('mode', payload.mode ?? 'reference');
 
   for (const file of files) {
@@ -319,8 +427,9 @@ export async function requestGenerateWithEditImage(
   formData.append('model', payload.model);
   formData.append('prompt', payload.prompt);
   formData.append('size', payload.size);
+  formData.append('aspectRatio', payload.aspectRatio);
+  formData.append('imageSize', payload.imageSize);
   formData.append('quality', payload.quality);
-  formData.append('n', String(payload.n));
   formData.append('mode', payload.mode ?? 'reference');
   formData.append('image', file);
 
@@ -361,6 +470,8 @@ export async function requestImageToPrompt(
   const formData = new FormData();
   formData.append('baseUrl', payload.baseUrl);
   formData.append('apiKey', payload.apiKey);
+  formData.append('model', payload.model);
+  formData.append('targetModel', payload.targetModel);
   formData.append('image', file);
 
   const response = await fetch('/api/image-to-prompt', {

@@ -1,6 +1,14 @@
 import type { FormEvent } from 'react';
-import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES, QUALITY_OPTIONS, SIZE_PRESETS, STYLE_PRESETS } from '../constants';
-import type { ApiErrorState, ImageFormState, UploadState } from '../types';
+import {
+  ACCEPTED_IMAGE_TYPES,
+  ASPECT_RATIO_PRESETS,
+  IMAGE_SIZE_OPTIONS,
+  MAX_UPLOAD_SIZE_BYTES,
+  QUALITY_OPTIONS,
+  STYLE_PRESETS,
+  SUPPORTED_MODELS,
+} from '../constants';
+import type { ApiErrorState, ImageFormState, SupportedModel, UploadState } from '../types';
 import { getCustomSizeHint } from '../utils';
 
 type ConfigFormProps = {
@@ -12,6 +20,8 @@ type ConfigFormProps = {
   polishError: string | null;
   polishedPromptDraft: string | null;
   advancedOpen: boolean;
+  configuredModels: SupportedModel[];
+  canUsePromptPolish: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: <K extends keyof ImageFormState>(field: K, value: ImageFormState[K]) => void;
   onRemoveImage: (index: number) => void;
@@ -34,8 +44,6 @@ const MODE_OPTIONS: Array<{
   { value: 'edit', label: '图片编辑', icon: '✎' },
 ];
 
-const COUNT_OPTIONS: Array<ImageFormState['outputCount']> = [1, 2, 4];
-
 export function ConfigForm({
   formState,
   uploadState,
@@ -45,6 +53,8 @@ export function ConfigForm({
   polishError,
   polishedPromptDraft,
   advancedOpen,
+  configuredModels,
+  canUsePromptPolish,
   onSubmit,
   onFieldChange,
   onRemoveImage,
@@ -61,8 +71,7 @@ export function ConfigForm({
   const customSizeHint = getCustomSizeHint(formState.customWidth, formState.customHeight);
   const canPolishPrompt = Boolean(
     formState.prompt.trim() &&
-    formState.baseUrl.trim() &&
-    formState.apiKey.trim() &&
+    canUsePromptPolish &&
     !isSubmitting &&
     !isPolishingPrompt,
   );
@@ -84,6 +93,29 @@ export function ConfigForm({
               {option.label}
             </button>
           ))}
+        </div>
+
+        <div className="field">
+          <div className="field-head">
+            <span>生图模型</span>
+            <small>{configuredModels.length > 0 ? '按设置页接口自动路由' : '先在设置页绑定接口'}</small>
+          </div>
+          <div className="model-select-grid">
+            {SUPPORTED_MODELS.map((model) => {
+              const isConfigured = configuredModels.includes(model);
+              return (
+                <button
+                  key={model}
+                  className={formState.model === model ? 'model-select-chip is-active' : 'model-select-chip'}
+                  type="button"
+                  disabled={!isConfigured}
+                  onClick={() => onFieldChange('model', model)}
+                >
+                  {model}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <label className="field">
@@ -181,19 +213,19 @@ export function ConfigForm({
         <div className="field">
           <div className="field-head">
             <span>图片比例</span>
-            <small>gpt-image-2 size</small>
+            <small>Gemini 使用 aspect_ratio</small>
           </div>
           <div className="ratio-grid chip-grid">
-            {SIZE_PRESETS.map((preset) => {
-              const isActive = formState.sizeMode === 'preset' && formState.size === preset.value;
+            {ASPECT_RATIO_PRESETS.map((preset) => {
+              const isActive = formState.sizeMode === 'preset' && formState.aspectRatio === preset.value;
               return (
                 <button
-                  key={preset.value}
+                  key={preset.label}
                   className={isActive ? 'option-chip chip is-active' : 'option-chip chip'}
                   type="button"
                   onClick={() => {
                     onFieldChange('sizeMode', 'preset');
-                    onFieldChange('size', preset.value);
+                    onFieldChange('aspectRatio', preset.value);
                   }}
                 >
                   <strong>{preset.label}</strong>
@@ -201,6 +233,29 @@ export function ConfigForm({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div className="field">
+          <div className="field-head">
+            <span>生成尺寸</span>
+            <small>Gemini 使用 image_size</small>
+          </div>
+          <div className="ratio-grid image-size-grid">
+            {IMAGE_SIZE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                className={formState.sizeMode === 'preset' && formState.imageSize === option.value ? 'option-chip chip is-active' : 'option-chip chip'}
+                type="button"
+                onClick={() => {
+                  onFieldChange('sizeMode', 'preset');
+                  onFieldChange('imageSize', option.value);
+                }}
+              >
+                <strong>{option.label}</strong>
+                <span>{option.description}</span>
+              </button>
+            ))}
             <button
               className={formState.sizeMode === 'custom' ? 'option-chip chip is-active' : 'option-chip chip'}
               type="button"
@@ -254,22 +309,6 @@ export function ConfigForm({
 
         <div className="compact-control-grid control-row">
           <div className="field">
-            <span>生成数量</span>
-            <div className="inline-option-group number-options">
-              {COUNT_OPTIONS.map((value) => (
-                <button
-                  key={value}
-                  className={formState.outputCount === value ? 'option-pill small-option is-active' : 'option-pill small-option'}
-                  type="button"
-                  onClick={() => onFieldChange('outputCount', value)}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
             <span>生成质量</span>
             <div className="inline-option-group quality-options">
               {QUALITY_OPTIONS.map((option) => (
@@ -288,35 +327,38 @@ export function ConfigForm({
 
         <div className="field">
           <span>输入图片</span>
-          <label className="upload-dropzone">
-            <input
-              className="upload-input"
-              type="file"
-              multiple={isReferenceMode}
-              accept={ACCEPTED_IMAGE_TYPES.join(',')}
-              onChange={(event) => {
-                onImageSelect(event.target.files);
-                event.target.value = '';
-              }}
-            />
+          <div className="upload-dropzone">
             {uploadState.files.length > 0 ? (
               isReferenceMode ? (
                 <div className="upload-preview-grid">
                   {uploadState.files.map((file, index) => (
                     <div key={`${file.name}-${file.lastModified}-${index}`} className="upload-preview-card">
+                      <button
+                        className="upload-remove-button"
+                        type="button"
+                        aria-label={`移除 ${file.name}`}
+                        onClick={() => onRemoveImage(index)}
+                      >
+                        x
+                      </button>
                       <img src={uploadState.previewUrls[index]} alt={file.name} />
                       <div className="upload-preview-card-body">
                         <strong>{file.name}</strong>
                         <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
                       </div>
-                      <button className="ghost-button" type="button" onClick={() => onRemoveImage(index)}>
-                        移除
-                      </button>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="upload-preview">
+                  <button
+                    className="upload-remove-button"
+                    type="button"
+                    aria-label="移除图片"
+                    onClick={() => onRemoveImage(0)}
+                  >
+                    x
+                  </button>
                   <img src={uploadState.previewUrls[0]} alt="上传预览" />
                   <div className="upload-preview-meta">
                     <strong>{uploadState.files[0]?.name ?? '已选择图片'}</strong>
@@ -338,21 +380,48 @@ export function ConfigForm({
                     ? `支持 PNG、JPEG、WEBP、GIF，最多 4 张，每张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`
                     : isEditMode
                       ? `支持 PNG、JPEG、WEBP、GIF，单张不超过 ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB。`
-                      : '切换到图生图或图片编辑后，这里会变成图片上传区。'}
+                  : '切换到图生图或图片编辑后，这里会变成图片上传区。'}
                 </small>
+                {formState.generationMode !== 'text' ? (
+                  <label className="upload-add-button">
+                    <input
+                      className="upload-input"
+                      type="file"
+                      multiple={isReferenceMode}
+                      accept={ACCEPTED_IMAGE_TYPES.join(',')}
+                      onChange={(event) => {
+                        onImageSelect(event.target.files);
+                        event.target.value = '';
+                      }}
+                    />
+                    选择图片
+                  </label>
+                ) : null}
               </div>
             )}
-          </label>
+          </div>
 
-          {uploadState.files.length > 0 && !isReferenceMode ? (
-            <button className="ghost-button" type="button" onClick={() => onRemoveImage(0)}>
-              移除图片
-            </button>
-          ) : null}
-          {uploadState.files.length > 0 && isReferenceMode ? (
-            <button className="ghost-button" type="button" onClick={onClearImages}>
-              清空全部参考图
-            </button>
+          {uploadState.files.length > 0 ? (
+            <div className="upload-action-row">
+              <label className="upload-add-button">
+                <input
+                  className="upload-input"
+                  type="file"
+                  multiple={isReferenceMode}
+                  accept={ACCEPTED_IMAGE_TYPES.join(',')}
+                  onChange={(event) => {
+                    onImageSelect(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                {isReferenceMode ? '继续添加参考图' : '更换图片'}
+              </label>
+              {isReferenceMode ? (
+                <button className="ghost-button" type="button" onClick={onClearImages}>
+                  清空全部参考图
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {uploadState.error ? <small className="upload-error">{uploadState.error}</small> : null}
         </div>
@@ -373,7 +442,7 @@ export function ConfigForm({
                 <input type="text" value={formState.model} disabled />
               </label>
               <p className="advanced-note">
-                `负面提示词 / 风格预设 / 生成数量 / 随机种子` 当前为前端工作流预留，不会改变后端接口请求。
+                当前模型会根据设置页中的“支持模型”自动选择对应接口。负面提示词和风格预设会合并进最终提示词。
               </p>
             </div>
           ) : null}
