@@ -12,6 +12,7 @@ const indexFile = path.join(distDir, 'index.html');
 const IMAGE_PATH = '/v1/images/generations';
 const EDIT_PATH = '/v1/images/edits';
 const GEMINI_IMAGE_PATH = '/v1beta/interactions';
+const GEMINI_NATIVE_FALLBACK_STATUSES = new Set([404, 405]);
 const RESPONSES_PATH = '/v1/responses';
 const USAGE_PATH = '/v1/usage';
 const PROMPT_REFERENCE_URL = 'https://raw.githubusercontent.com/ZeroLu/awesome-gpt-image/main/README.zh-CN.md';
@@ -86,24 +87,45 @@ app.post('/api/generate', upload.array('image', MAX_REFERENCE_IMAGE_COUNT), asyn
         uploadedImages,
       });
 
+      if (
+        shouldFallbackGeminiNativeRequest(upstreamResponse, baseUrl) &&
+        mode === 'text'
+      ) {
+        const fallbackUrl = buildUpstreamUrl(baseUrl, IMAGE_PATH);
+        if (!fallbackUrl) {
+          res.status(400).json({
+            error: {
+              message: '接口域名无效，只允许 http 或 https 协议。',
+            },
+          });
+          return;
+        }
+
+        const fallbackResponse = await fetchOpenAiCompatibleImageGeneration({
+          upstreamUrl: fallbackUrl,
+          apiKey,
+          model,
+          prompt,
+          size,
+          quality,
+        });
+
+        await proxyResponse(fallbackResponse, res);
+        return;
+      }
+
       await proxyGeminiImageResponse(upstreamResponse, res);
       return;
     }
 
     const upstreamResponse = mode === 'text'
-      ? await fetch(upstreamUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            prompt: prompt.trim(),
-            size,
-            quality,
-            n: 1,
-          }),
+      ? await fetchOpenAiCompatibleImageGeneration({
+          upstreamUrl,
+          apiKey,
+          model,
+          prompt,
+          size,
+          quality,
         })
       : await fetchWithImageEdit({
           upstreamUrl,
@@ -380,6 +402,27 @@ function buildUpstreamUrl(baseUrl, pathName) {
   }
 }
 
+function shouldFallbackGeminiNativeRequest(upstreamResponse, baseUrl) {
+  return (
+    GEMINI_NATIVE_FALLBACK_STATUSES.has(upstreamResponse.status) &&
+    !isGoogleGeminiBaseUrl(baseUrl)
+  );
+}
+
+function isGoogleGeminiBaseUrl(baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    const { hostname } = new URL(normalized);
+    return hostname === 'generativelanguage.googleapis.com';
+  } catch {
+    return false;
+  }
+}
+
 function validateBaseFields(baseUrl, apiKey) {
   if (!normalizeBaseUrl(baseUrl)) {
     return '请输入带中转站的接口域名。';
@@ -538,6 +581,30 @@ function validateGptImage2Size(size) {
   }
 
   return null;
+}
+
+async function fetchOpenAiCompatibleImageGeneration({
+  upstreamUrl,
+  apiKey,
+  model,
+  prompt,
+  size,
+  quality,
+}) {
+  return fetch(upstreamUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey.trim()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      prompt: prompt.trim(),
+      size,
+      quality,
+      n: 1,
+    }),
+  });
 }
 
 async function fetchWithImageEdit({

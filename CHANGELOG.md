@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.1 - 2026-07-01
+
+### Fixed
+- 修复 Gemini 图片生成在 OpenAI 兼容中转接口上返回 404 的问题，非 Google 官方域名会在原生 Gemini 路径不可用时自动回退到 `/v1/images/generations`。
+
 ## v1.2.0 - 2026-06-30
 
 ### Added
