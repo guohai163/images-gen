@@ -2,11 +2,11 @@ import type { FormEvent } from 'react';
 import {
   ACCEPTED_IMAGE_TYPES,
   ASPECT_RATIO_PRESETS,
+  IMAGE_GENERATION_MODELS,
   IMAGE_SIZE_OPTIONS,
   MAX_UPLOAD_SIZE_BYTES,
   QUALITY_OPTIONS,
   STYLE_PRESETS,
-  SUPPORTED_MODELS,
 } from '../constants';
 import type { ApiErrorState, ImageFormState, SupportedModel, UploadState } from '../types';
 import { getCustomSizeHint } from '../utils';
@@ -101,7 +101,7 @@ export function ConfigForm({
             <small>{configuredModels.length > 0 ? '按设置页接口自动路由' : '先在设置页绑定接口'}</small>
           </div>
           <div className="model-select-grid">
-            {SUPPORTED_MODELS.map((model) => {
+            {IMAGE_GENERATION_MODELS.map((model) => {
               const isConfigured = configuredModels.includes(model);
               return (
                 <button

@@ -33,6 +33,10 @@ const SUPPORTED_MODELS = new Set([
   'gpt-5.4',
   'gpt-5.4-mini',
 ]);
+const IMAGE_GENERATION_MODELS = new Set([
+  'gemini-3.1-flash-image',
+  'gpt-image-2',
+]);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -436,7 +440,7 @@ function validateBaseFields(baseUrl, apiKey) {
 }
 
 function validateGenerateFields(model, prompt, size, aspectRatio, imageSize, quality, mode, uploadedImages) {
-  const modelValidationError = validateModelField(model);
+  const modelValidationError = validateImageGenerationModelField(model);
   if (modelValidationError) {
     return modelValidationError;
   }
@@ -500,6 +504,14 @@ function validateGenerateFields(model, prompt, size, aspectRatio, imageSize, qua
 function validateModelField(model) {
   if (typeof model !== 'string' || !SUPPORTED_MODELS.has(model)) {
     return `模型无效，请选择：${Array.from(SUPPORTED_MODELS).join('、')}。`;
+  }
+
+  return null;
+}
+
+function validateImageGenerationModelField(model) {
+  if (typeof model !== 'string' || !IMAGE_GENERATION_MODELS.has(model)) {
+    return `生图模型无效，请选择：${Array.from(IMAGE_GENERATION_MODELS).join('、')}。`;
   }
 
   return null;

@@ -3,6 +3,7 @@ import {
   DEFAULT_DISPLAY_PREFERENCES,
   DEFAULT_FORM_STATE,
   HISTORY_LIMIT,
+  IMAGE_GENERATION_MODELS,
   IMAGE_SIZE_OPTIONS,
   INDEXED_DB,
   STORAGE_KEYS,
@@ -41,6 +42,10 @@ type StoredSettings = Pick<
 
 function isSupportedModel(value: unknown): value is SupportedModel {
   return typeof value === 'string' && SUPPORTED_MODELS.includes(value as SupportedModel);
+}
+
+function isImageGenerationModel(value: unknown): value is SupportedModel {
+  return typeof value === 'string' && IMAGE_GENERATION_MODELS.includes(value as SupportedModel);
 }
 
 function isAspectRatio(value: unknown): value is AspectRatio {
@@ -91,8 +96,19 @@ function createStoredProviderId(index: number): string {
 }
 
 function getLegacySupportedModels(storedModel: SupportedModel): SupportedModel[] {
+  const imageModel = isImageGenerationModel(storedModel) ? storedModel : DEFAULT_FORM_STATE.model;
   return SUPPORTED_MODELS.filter((model) =>
-    model === storedModel || model === 'gpt-5.4' || model === 'gpt-5.4-mini',
+    model === imageModel || model === 'gpt-5.5' || model === 'gpt-5.4' || model === 'gpt-5.4-mini',
+  );
+}
+
+function findFirstProviderImageGenerationModel(provider: ApiProviderConfig | undefined): SupportedModel | undefined {
+  return provider?.supportedModels.find(isImageGenerationModel);
+}
+
+function findFirstConfiguredImageGenerationModel(providers: ApiProviderConfig[]): SupportedModel | undefined {
+  return IMAGE_GENERATION_MODELS.find((model) =>
+    providers.some((provider) => provider.supportedModels.includes(model)),
   );
 }
 
@@ -145,6 +161,7 @@ export function loadStoredSettings(): ImageFormState {
 
     const parsed = JSON.parse(raw) as Partial<StoredSettings>;
     const storedModel = isSupportedModel(parsed.model) ? parsed.model : DEFAULT_FORM_STATE.model;
+    const storedImageModel = isImageGenerationModel(storedModel) ? storedModel : DEFAULT_FORM_STATE.model;
     const apiProviders = normalizeStoredProviders(parsed.apiProviders);
     const legacyBaseUrl = typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '';
     const legacyApiKey = typeof parsed.apiKey === 'string' ? parsed.apiKey : '';
@@ -161,15 +178,18 @@ export function loadStoredSettings(): ImageFormState {
             },
           ];
     const selectedProvider =
-      migratedProviders.find((provider) => provider.supportedModels.includes(storedModel)) ??
-      migratedProviders[0];
-    const selectedModel = selectedProvider?.supportedModels[0] ?? storedModel;
+      migratedProviders.find((provider) => provider.supportedModels.includes(storedImageModel)) ??
+      migratedProviders.find((provider) => provider.supportedModels.some(isImageGenerationModel));
+    const selectedModel =
+      findFirstProviderImageGenerationModel(selectedProvider) ??
+      findFirstConfiguredImageGenerationModel(migratedProviders) ??
+      storedImageModel;
 
     return {
       ...DEFAULT_FORM_STATE,
       baseUrl: selectedProvider?.baseUrl ?? legacyBaseUrl,
       apiKey: selectedProvider?.apiKey ?? legacyApiKey,
-      model: selectedProvider?.supportedModels.includes(storedModel) ? storedModel : selectedModel,
+      model: selectedModel,
       apiProviders: migratedProviders,
       prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
       negativePrompt: typeof parsed.negativePrompt === 'string' ? parsed.negativePrompt : '',

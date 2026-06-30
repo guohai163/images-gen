@@ -29,6 +29,11 @@ export const SUPPORTED_MODELS: SupportedModel[] = [
   'gpt-5.4-mini',
 ];
 
+export const IMAGE_GENERATION_MODELS: SupportedModel[] = [
+  'gemini-3.1-flash-image',
+  'gpt-image-2',
+];
+
 export const DEFAULT_FORM_STATE: ImageFormState = {
   baseUrl: '',
   apiKey: '',

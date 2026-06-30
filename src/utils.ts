@@ -18,7 +18,14 @@ import type {
   UsageRequestPayload,
   UsageResponse,
 } from './types';
-import { ACCEPTED_IMAGE_TYPES, CUSTOM_SIZE_LIMITS, MAX_UPLOAD_SIZE_BYTES, STYLE_PRESETS, SUPPORTED_MODELS } from './constants';
+import {
+  ACCEPTED_IMAGE_TYPES,
+  CUSTOM_SIZE_LIMITS,
+  IMAGE_GENERATION_MODELS,
+  MAX_UPLOAD_SIZE_BYTES,
+  STYLE_PRESETS,
+  SUPPORTED_MODELS,
+} from './constants';
 
 const MAX_REFERENCE_IMAGE_COUNT = 4;
 
@@ -51,6 +58,10 @@ export function normalizeBaseUrl(input: string): string {
 
 export function isSupportedModel(value: unknown): value is SupportedModel {
   return typeof value === 'string' && SUPPORTED_MODELS.includes(value as SupportedModel);
+}
+
+export function isImageGenerationModel(value: unknown): value is SupportedModel {
+  return typeof value === 'string' && IMAGE_GENERATION_MODELS.includes(value as SupportedModel);
 }
 
 export function hasProviderCredentials(provider: ApiProviderConfig | undefined): provider is ApiProviderConfig {
@@ -100,8 +111,8 @@ export function resolveApiConfigForPreferredModels(
 }
 
 export function validateForm(formState: ImageFormState): string | null {
-  if (!isSupportedModel(formState.model)) {
-    return '请选择受支持的模型。';
+  if (!isImageGenerationModel(formState.model)) {
+    return '请选择受支持的生图模型。';
   }
 
   const activeProvider = findApiProviderForModel(formState.apiProviders, formState.model);

@@ -9,6 +9,7 @@ import {
   DEFAULT_DISPLAY_PREFERENCES,
   DEFAULT_FORM_STATE,
   HISTORY_LIMIT,
+  IMAGE_GENERATION_MODELS,
   SUPPORTED_MODELS,
 } from './constants';
 import {
@@ -63,6 +64,16 @@ import {
 
 const PROMPT_POLISH_MODELS: SupportedModel[] = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.5'];
 const IMAGE_TO_PROMPT_MODELS: SupportedModel[] = ['gpt-5.4', 'gpt-5.5'];
+
+function isImageGenerationModel(model: SupportedModel): boolean {
+  return IMAGE_GENERATION_MODELS.includes(model);
+}
+
+function findFirstConfiguredImageGenerationModel(providers: ApiProviderConfig[]): SupportedModel | undefined {
+  return IMAGE_GENERATION_MODELS.find((model) =>
+    providers.some((provider) => provider.supportedModels.includes(model)),
+  );
+}
 
 const NAV_ITEMS: Array<{
   id: AppPage;
@@ -236,8 +247,17 @@ function App() {
     providers: ApiProviderConfig[],
     model: SupportedModel,
   ): Pick<ImageFormState, 'baseUrl' | 'apiKey' | 'model' | 'apiProviders'> {
-    const selectedProvider = findApiProviderForModel(providers, model);
-    const fallbackModel = providers.flatMap((provider) => provider.supportedModels)[0] ?? model;
+    if (providers.length === 0) {
+      return {
+        apiProviders: providers,
+        model: isImageGenerationModel(model) ? model : DEFAULT_FORM_STATE.model,
+        baseUrl: current.baseUrl,
+        apiKey: current.apiKey,
+      };
+    }
+
+    const selectedProvider = isImageGenerationModel(model) ? findApiProviderForModel(providers, model) : undefined;
+    const fallbackModel = findFirstConfiguredImageGenerationModel(providers) ?? DEFAULT_FORM_STATE.model;
     const nextModel = selectedProvider ? model : fallbackModel;
     const nextProvider = findApiProviderForModel(providers, nextModel);
 
@@ -853,7 +873,7 @@ function App() {
     promptReferenceCategory,
     promptReferenceSearch,
   );
-  const configuredModels = SUPPORTED_MODELS.filter((model) =>
+  const configuredModels = IMAGE_GENERATION_MODELS.filter((model) =>
     formState.apiProviders.some((provider) => provider.supportedModels.includes(model)),
   );
   const promptPolishConfig = resolveApiConfigForPreferredModels(formState, PROMPT_POLISH_MODELS);
@@ -896,7 +916,7 @@ function App() {
 
         <footer className="sidebar-footer">
           <p>© 2026 Magic Canvas</p>
-          <span>v1.0.0</span>
+          <span>v{__APP_VERSION__}</span>
         </footer>
       </aside>
 
